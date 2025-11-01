@@ -119,10 +119,14 @@ export function createSnapshotProjection<
     const keys = extractKeys(event, partition);
 
     // Check if event is newer than what we've already processed
-    // Note: Casting to any is necessary because Kysely cannot infer types for dynamic table names
+    // Note: Casting to `any` is necessary because Kysely cannot infer types for dynamic table names.
+    // The table name is provided at runtime, so TypeScript cannot verify the table structure at compile time.
+    // This is a known limitation when working with dynamic table names in Kysely.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const existing = await (db as any)
       .selectFrom(tableName)
       .select(["last_stream_position", "snapshot"])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .where((eb: ExpressionBuilder<DatabaseExecutor, any>) => {
         const conditions = Object.entries(keys).map(([key, value]) =>
           eb(key, "=", value),
@@ -187,6 +191,9 @@ export function createSnapshotProjection<
     }
 
     await insertQuery
+      // Note: `any` is used here because the conflict builder needs to work with any table schema.
+      // The actual schema is validated at runtime through Kysely's query builder.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .onConflict((oc: OnConflictBuilder<DatabaseExecutor, any>) => {
         const conflictBuilder = oc.columns(primaryKeys);
         return conflictBuilder.doUpdateSet(updateSet);
@@ -229,7 +236,10 @@ export function createSnapshotProjectionRegistry<
   const registry: ProjectionRegistry<DatabaseExecutor> = {};
 
   for (const eventType of eventTypes) {
-    registry[eventType] = [handler];
+    // Type cast is safe here because ProjectionHandler is contravariant in its event type parameter.
+    // A handler for a specific event type E can safely handle any event that matches E's structure.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registry[eventType] = [handler as any];
   }
 
   return registry;

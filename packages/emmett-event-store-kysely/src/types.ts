@@ -72,9 +72,15 @@ export type ProjectionHandler<
   event: ProjectionEvent<E>,
 ) => void | Promise<void>;
 
+/**
+ * ProjectionRegistry maps event types to their handlers.
+ * The `any` in `ProjectionHandler<T, any>[]` is intentional - it allows handlers
+ * for different event types to be registered together, with type safety enforced
+ * at the handler level through the ProjectionHandler generic parameter.
+ */
 export type ProjectionRegistry<T = DatabaseExecutor<any>> = Record<
   string,
-  ProjectionHandler<T, any>[]
+  ProjectionHandler<T, { type: string; data: unknown }>[]
 >;
 
 export function createProjectionRegistry<T = DatabaseExecutor<any>>(

@@ -2,6 +2,10 @@
 
 A Kysely-based event store implementation for [Emmett](https://github.com/event-driven-io/emmett), providing event sourcing capabilities with PostgreSQL.
 
+## 📚 Documentation
+
+**👉 [View Complete Documentation →](https://wataruoguchi.github.io/emmett-libs/emmett-event-store-kysely)**
+
 ## Features
 
 - **Event Store** - Full event sourcing with Kysely and PostgreSQL
@@ -20,7 +24,7 @@ npm install @wataruoguchi/emmett-event-store-kysely @event-driven-io/emmett kyse
 
 ### 1. Database Setup
 
-Set up the required PostgreSQL tables using [our migration example](https://github.com/wataruoguchi/emmett-event-store-kysely/blob/main/packages/emmett-event-store-kysely/database/migrations/1758758113676_event_sourcing_migration_example.ts):
+Set up the required PostgreSQL tables using [our migration example](https://github.com/wataruoguchi/emmett-libs/blob/main/packages/emmett-event-store-kysely/database/migrations/1758758113676_event_sourcing_migration_example.ts):
 
 ```typescript
 import { Kysely } from "kysely";
@@ -109,14 +113,10 @@ await runner.projectEvents("subscription-id", "cart-123", {
 });
 ```
 
-## Documentation
+## Examples
 
-📚 **[Complete Documentation](https://github.com/wataruoguchi/emmett-event-store-kysely/blob/main/packages/emmett-event-store-kysely/docs/README.md)**
-
-### Examples
-
-- [Working Example](https://github.com/wataruoguchi/emmett-event-store-kysely/tree/main/example/) - Complete application with carts and generators
-- [Migration Example](https://github.com/wataruoguchi/emmett-event-store-kysely/blob/main/packages/emmett-event-store-kysely/database/migrations/1758758113676_event_sourcing_migration_example.ts) - Database setup
+- [Working Example](https://github.com/wataruoguchi/emmett-libs/tree/main/example/) - Complete application with carts and generators
+- [Migration Example](https://github.com/wataruoguchi/emmett-libs/blob/main/packages/emmett-event-store-kysely/database/migrations/1758758113676_event_sourcing_migration_example.ts) - Database setup
 
 ## License
 
@@ -124,4 +124,4 @@ MIT
 
 ## Contributing
 
-Contributions are welcome! Please see our [GitHub repository](https://github.com/wataruoguchi/emmett-event-store-kysely) for issues and PRs.
+Contributions are welcome! Please see our [GitHub repository](https://github.com/wataruoguchi/emmett-libs) for issues and PRs.
