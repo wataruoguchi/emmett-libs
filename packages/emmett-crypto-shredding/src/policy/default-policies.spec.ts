@@ -18,7 +18,7 @@ describe("Feature: Default Policies", () => {
         expect(p.policyId.startsWith(partition + "-")).toBe(true);
         expect(typeof p.streamTypeClass).toBe("string");
         expect(typeof p.keyScope).toBe("string");
-        expect(["stream", "type", "tenant"]).toContain(p.keyScope);
+        expect(["stream", "type", "partition"]).toContain(p.keyScope);
         expect(["AES-GCM", "AES-CBC", "AES-CTR"]).toContain(
           p.encryptionAlgorithm,
         );
@@ -89,7 +89,7 @@ describe("Feature: Default Policies", () => {
           streamTypeClass: "custom-type",
           encryptionAlgorithm: "AES-GCM",
           keyRotationIntervalDays: 60,
-          keyScope: "tenant",
+          keyScope: "partition",
         },
       ];
 

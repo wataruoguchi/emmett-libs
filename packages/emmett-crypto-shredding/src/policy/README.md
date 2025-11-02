@@ -16,7 +16,7 @@ type PolicyConfig = {
   streamTypeClass: string;      // e.g. "user-data", "audit-log", "*" (wildcard)
   encryptionAlgorithm: "AES-GCM" | "AES-CBC" | "AES-CTR";
   keyRotationIntervalDays: number;
-  keyScope: "stream" | "type" | "tenant";  // Key management scope
+  keyScope: "stream" | "type" | "partition";  // Key management scope
   partition: string;
 };
 ```

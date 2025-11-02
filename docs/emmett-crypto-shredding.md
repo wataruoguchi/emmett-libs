@@ -94,7 +94,7 @@ CREATE TABLE encryption_keys_default PARTITION OF encryption_keys DEFAULT;
 CREATE TABLE encryption_policies_default PARTITION OF encryption_policies DEFAULT;
 ```
 
-**Note:** The `key_id` format is `${partition}::${keyRef}@${version}`. The `key_ref` is encoded in the `key_id`, not stored as a separate column. This allows flexible key scoping (per-stream, per-type, or per-tenant).
+**Note:** The `key_id` format is `${partition}::${keyRef}@${version}`. The `key_ref` is encoded in the `key_id`, not stored as a separate column. This allows flexible key scoping (per-stream, per-type, or per-partition).
 
 **Key Usage Tracking:** Key usage history is tracked directly in message metadata. Each encrypted message stores `keyId` and `keyVersion` in `metadata.enc`, allowing audit queries to determine which keys were used at which stream positions without requiring a separate history table.
 
@@ -507,7 +507,7 @@ type SupportedAlgorithm =
   | "AES-CBC" 
   | "AES-CTR";
 
-type KeyScope = "stream" | "type" | "tenant";
+type KeyScope = "stream" | "type" | "partition";
 
 interface PolicyConfig {
   policyId: string;

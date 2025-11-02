@@ -1109,19 +1109,19 @@ describe("Feature: Crypto Shredding for Generator Events", () => {
     });
   });
 
-  describe("Scenario: Key Scope - tenant scope", () => {
+  describe("Scenario: Key Scope - partition scope", () => {
     let tenantScopeTenantId: string;
     let tenantScopeApp: Hono;
 
     beforeAll(async () => {
       tenantScopeTenantId = (await seedTestDb(db).createTenant()).id;
 
-      // Create policy with tenant scope (all streams share "default" key)
+      // Create policy with partition scope (all streams share "default" key)
       await createPolicies(db, [
         {
-          policyId: `${tenantScopeTenantId}-tenant-scope`,
+          policyId: `${tenantScopeTenantId}-partition-scope`,
           partition: tenantScopeTenantId,
-          keyScope: "tenant",
+          keyScope: "partition",
           streamTypeClass: "generator",
           encryptionAlgorithm: "AES-GCM",
           keyRotationIntervalDays: 180,
@@ -1133,8 +1133,8 @@ describe("Feature: Crypto Shredding for Generator Events", () => {
       tenantScopeApp = createGeneratorHttpAdapter({ generatorPort, logger });
     });
 
-    it("should use 'default' keyRef for tenant scope", async () => {
-      // Verify tenant scope uses default keyRef
+    it("should use 'default' keyRef for partition scope", async () => {
+      // Verify partition scope uses default keyRef
       const response = await tenantScopeApp.request(
         `/api/tenants/${tenantScopeTenantId}/generators`,
         {
@@ -1154,12 +1154,12 @@ describe("Feature: Crypto Shredding for Generator Events", () => {
 
       const keyInfo = getKeyFromMetadata(messages?.message_metadata);
 
-      // Tenant scope always uses "default" as keyRef
+      // Partition scope always uses "default" as keyRef
       expect(keyInfo.keyRef).toBe("default");
     });
 
-    it("should share the same key across all stream types with tenant scope", async () => {
-      // This demonstrates that tenant scope uses "default" keyRef
+    it("should share the same key across all stream types with partition scope", async () => {
+      // This demonstrates that partition scope uses "default" keyRef
       // In a real scenario, you'd have multiple stream types sharing the same key
       const response1 = await tenantScopeApp.request(
         `/api/tenants/${tenantScopeTenantId}/generators`,

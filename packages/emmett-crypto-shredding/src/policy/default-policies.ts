@@ -8,7 +8,7 @@ export interface PolicyConfig {
   streamTypeClass: string;
   encryptionAlgorithm: SupportedAlgorithm;
   keyRotationIntervalDays: number;
-  keyScope: "stream" | "type" | "tenant";
+  keyScope: "stream" | "type" | "partition";
   partition: string;
 }
 

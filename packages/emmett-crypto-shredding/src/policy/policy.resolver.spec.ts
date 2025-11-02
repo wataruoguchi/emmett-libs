@@ -201,10 +201,10 @@ describe("Feature: Policy Resolver", () => {
     });
   });
 
-  describe("Scenario: Key Scope - Tenant", () => {
-    it("Given tenant-scoped policy, When resolving policy, Then it should use 'default' as keyRef", async () => {
+  describe("Scenario: Key Scope - Partition", () => {
+    it("Given partition-scoped policy, When resolving policy, Then it should use 'default' as keyRef", async () => {
       const policies = new Map<string, PolicyData>();
-      policies.set("p1:test-type", createMockPolicy({ keyScope: "tenant" }));
+      policies.set("p1:test-type", createMockPolicy({ keyScope: "partition" }));
       const storage = createMockStorage(policies);
       const resolver = createPolicyResolver(storage);
 
@@ -220,12 +220,12 @@ describe("Feature: Policy Resolver", () => {
       }
     });
 
-    it("Given tenant-scoped policy, When resolving without streamType, Then it should still use 'default'", async () => {
+    it("Given partition-scoped policy, When resolving without streamType, Then it should still use 'default'", async () => {
       const policies = new Map<string, PolicyData>();
       // When streamType is undefined, storage receives null
       policies.set(
         "p1:null",
-        createMockPolicy({ keyScope: "tenant", streamTypeClass: "default" }),
+        createMockPolicy({ keyScope: "partition", streamTypeClass: "default" }),
       );
       const storage = createMockStorage(policies);
       const resolver = createPolicyResolver(storage);
@@ -304,11 +304,11 @@ describe("Feature: Policy Resolver", () => {
       expect(result.encrypt).toBe(true);
     });
 
-    it("Given default policy with tenant scope, When resolving without streamType, Then it should match and use default keyRef", async () => {
+    it("Given default policy with partition scope, When resolving without streamType, Then it should match and use default keyRef", async () => {
       const policies = new Map<string, PolicyData>();
       policies.set(
         "p1:null",
-        createMockPolicy({ streamTypeClass: "default", keyScope: "tenant" }),
+        createMockPolicy({ streamTypeClass: "default", keyScope: "partition" }),
       );
       const storage = createMockStorage(policies);
       const resolver = createPolicyResolver(storage);

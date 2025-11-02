@@ -28,7 +28,7 @@ export interface PolicyStorage {
 /**
  * Type for key scope configuration
  */
-export type KeyScope = "stream" | "type" | "tenant";
+export type KeyScope = "stream" | "type" | "partition";
 
 /**
  * Database-agnostic EncryptionPolicyResolver implementation.
@@ -56,7 +56,7 @@ export function createPolicyResolver(
         // Determine keyRef based on scope, validating required context:
         // - "stream": Requires streamId (unique key per stream)
         // - "type": Requires streamType (one key per stream type)
-        // - "tenant": Always uses "default" (shared key for entire tenant)
+        // - "partition": Always uses "default" (shared key for entire partition)
         let keyRef: string;
         if (keyScope === "stream") {
           if (!ctx.streamId) {
@@ -75,7 +75,7 @@ export function createPolicyResolver(
           }
           keyRef = ctx.streamType;
         } else {
-          // keyScope === "tenant"
+          // keyScope === "partition"
           keyRef = "default";
         }
 
