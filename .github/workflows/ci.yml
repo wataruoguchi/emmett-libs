@@ -89,6 +89,19 @@ jobs:
       - name: Build package
         run: npm run build
 
+      - name: Fix npm dist-tag (if needed)
+        if: matrix.package == 'emmett-event-store-kysely'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          CURRENT_LATEST=$(npm dist-tag ls @wataruoguchi/emmett-event-store-kysely 2>/dev/null | grep "latest:" | awk '{print $2}' || echo "1.0.2")
+          if [ "$CURRENT_LATEST" != "2.1.0" ] && npm view @wataruoguchi/emmett-event-store-kysely@2.1.0 version > /dev/null 2>&1; then
+            echo "Fixing dist-tag from $CURRENT_LATEST to 2.1.0"
+            npm dist-tag add @wataruoguchi/emmett-event-store-kysely@2.1.0 latest
+          else
+            echo "Dist-tag is already correct or version 2.1.0 not found"
+          fi
+
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
