@@ -3,6 +3,15 @@
  * Wires together all the dependencies following hexagonal architecture
  */
 
+import {
+  createCryptoEventStore,
+  createWebCryptoProvider,
+  type CryptoContext,
+} from "@wataruoguchi/emmett-crypto-shredding";
+import {
+  createKeyManagement,
+  createPolicyResolver,
+} from "@wataruoguchi/emmett-crypto-shredding-kysely";
 import { getKyselyEventStore } from "@wataruoguchi/emmett-event-store-kysely";
 import { getContext } from "../shared/hono/context-middleware.js";
 import type { DatabaseExecutor } from "../shared/infra/db.js";
@@ -28,7 +37,17 @@ export function createGeneratorModule({
   db: DatabaseExecutor;
   logger: Logger;
 }): GeneratorPort {
-  const eventStore = getKyselyEventStore({ db, logger });
+  const eventStore = createCryptoEventStore(
+    getKyselyEventStore({ db, logger }),
+    {
+      policy: createPolicyResolver(db, logger),
+      keys: createKeyManagement(db),
+      crypto: createWebCryptoProvider(),
+      buildAAD: ({ partition, streamId }: CryptoContext) =>
+        new TextEncoder().encode(`${partition}:${streamId}`),
+      logger,
+    },
+  );
   const repository = createGeneratorRepository({ db, logger });
   const tenantService = createTenantServiceAdapter(tenantPort);
   const eventHandler = generatorEventHandler({ eventStore, getContext });
