@@ -1,0 +1,65 @@
+{
+  "name": "@wataruoguchi/emmett-crypto-shredding",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "0.1.0",
+  "description": "A Crypto Shredding implementation for Emmett",
+  "author": "Wataru Oguchi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wataruoguchi/emmett-libs.git"
+  },
+  "homepage": "https://github.com/wataruoguchi/emmett-libs",
+  "bugs": "https://github.com/wataruoguchi/emmett-libs/issues",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/types.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "type-check": "tsc --noEmit",
+    "tc": "npm run type-check",
+    "test": "npm run type-check && vitest run",
+    "test:coverage": "vitest run --coverage",
+    "release": "semantic-release",
+    "release:dry-run": "semantic-release --dry-run"
+  },
+  "peerDependencies": {
+    "@event-driven-io/emmett": "0"
+  },
+  "devDependencies": {
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/github": "^12.0.0",
+    "@semantic-release/npm": "^13.1.1",
+    "@semantic-release/release-notes-generator": "^14.1.0",
+    "@vitest/coverage-v8": "^4.0.4",
+    "semantic-release": "^25.0.1",
+    "semantic-release-monorepo": "^8.0.2",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.4"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.9.5"
+  },
+  "keywords": [
+    "emmett",
+    "Event Sourcing",
+    "event-sourcing",
+    "crypto",
+    "shredding",
+    "crypto-shredding"
+  ]
+}
