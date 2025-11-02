@@ -16,9 +16,16 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/github": "^12.0.1",
+    "@semantic-release/npm": "^13.1.1",
+    "@semantic-release/release-notes-generator": "^14.1.0",
     "@types/node": "^20.11.17",
+    "conventional-changelog-conventionalcommits": "^9.1.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.0",
+    "semantic-release": "^25.0.1",
+    "semantic-release-monorepo": "^8.0.2",
     "typescript": "^5.8.3",
     "vitepress": "^2.0.0-alpha.12"
   },
