@@ -32,9 +32,7 @@
     "type-check": "tsc --noEmit",
     "tc": "npm run type-check",
     "test": "npm run type-check && vitest run",
-    "test:coverage": "vitest run --coverage",
-    "release": "semantic-release",
-    "release:dry-run": "semantic-release --dry-run"
+    "test:coverage": "vitest run --coverage"
   },
   "peerDependencies": {
     "@event-driven-io/emmett": "0"

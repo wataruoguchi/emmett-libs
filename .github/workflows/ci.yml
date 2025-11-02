@@ -96,19 +96,19 @@ jobs:
       - name: Download build artifacts - emmett-event-store-kysely
         uses: actions/download-artifact@v4
         with:
-          name: emmett-event-store-kysely
+          name: emmett-event-store-kysely-dist
           path: ./packages/emmett-event-store-kysely
 
       - name: Download build artifacts - emmett-crypto-shredding
         uses: actions/download-artifact@v4
         with:
-          name: emmett-crypto-shredding
+          name: emmett-crypto-shredding-dist
           path: ./packages/emmett-crypto-shredding
 
       - name: Download build artifacts - emmett-crypto-shredding-kysely
         uses: actions/download-artifact@v4
         with:
-          name: emmett-crypto-shredding-kysely
+          name: emmett-crypto-shredding-kysely-dist
           path: ./packages/emmett-crypto-shredding-kysely
 
       - name: Release
