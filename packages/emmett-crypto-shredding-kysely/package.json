@@ -1,0 +1,69 @@
+{
+  "name": "@wataruoguchi/emmett-crypto-shredding-kysely",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "0.1.0",
+  "description": "Kysely adapters for Emmett Crypto Shredding",
+  "author": "Wataru Oguchi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wataruoguchi/emmett-libs.git"
+  },
+  "homepage": "https://github.com/wataruoguchi/emmett-libs",
+  "bugs": "https://github.com/wataruoguchi/emmett-libs/issues",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "database"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && tsup src/index.ts",
+    "type-check": "tsc --noEmit",
+    "tc": "npm run type-check",
+    "pretest": "cd ../emmett-crypto-shredding && npm install && npm run build",
+    "test": "npm run type-check && vitest run",
+    "test:coverage": "vitest run --coverage",
+    "release": "semantic-release",
+    "release:dry-run": "semantic-release --dry-run"
+  },
+  "devDependencies": {
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/github": "^11.0.6",
+    "@semantic-release/npm": "^12.0.2",
+    "@semantic-release/release-notes-generator": "^14.1.0",
+    "@types/node": "^24.9.2",
+    "@vitest/coverage-v8": "^3.2.4",
+    "kysely": "^0.28.7",
+    "semantic-release": "^24.2.9",
+    "semantic-release-monorepo": "^8.0.2",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "@wataruoguchi/emmett-crypto-shredding": "0",
+    "kysely": "0"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.9.5"
+  },
+  "keywords": [
+    "emmett",
+    "crypto-shredding",
+    "kysely",
+    "postgres",
+    "postgresql",
+    "event-sourcing"
+  ]
+}

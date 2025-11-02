@@ -135,16 +135,31 @@ function createDecide(getContext: () => AppContext) {
       const { data: rawData } = command;
       const { tenantId, generatorId, ...data } = rawData;
 
-      // Some business rules here. We may want to have a logic to filter only the fields that are changed. Then log it.
-      const currentName = state.data.name;
-      const { name: newName } = rawData;
-      if (newName) {
-        console.log(`Changing name from ${currentName} to ${newName}`);
-      }
+      const previousData = state.data || {};
+
+      // Filter out undefined values and only include fields that have actually changed
+      const changedFields = Object.fromEntries(
+        Object.entries(data).filter(([key, value]) => {
+          // Skip undefined values (they don't represent intentional updates)
+          if (value === undefined) return false;
+
+          // Include field if it has changed from previous state
+          const previousValue = previousData[key as keyof typeof previousData];
+          return value !== previousValue;
+        }),
+      ) as Partial<Omit<GeneratorEntity, "tenantId" | "generatorId">>;
+
+      // If no fields have changed, we could throw an error or return unchanged
+      // For now, we'll allow empty updates (they'll just be no-ops in evolve)
+      const eventData = changedFields as Omit<
+        GeneratorEntity,
+        "tenantId" | "generatorId"
+      >;
+
       return {
         type: "GeneratorUpdated",
         data: {
-          eventData: data,
+          eventData,
           eventMeta: {
             tenantId,
             generatorId,
@@ -220,7 +235,7 @@ export function createEvolve() {
       case "GeneratorCreated": {
         const nextState: DomainState = {
           status: "created",
-          data: data.eventData, // "GeneratorCreated" must be the first event. So it does not need to care about the previous state.
+          data: data.eventData ?? {}, // "GeneratorCreated" must be the first event. So it does not need to care about the previous state.
         };
         return nextState;
       }

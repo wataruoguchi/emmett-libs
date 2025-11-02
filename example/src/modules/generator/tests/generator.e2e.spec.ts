@@ -1,11 +1,29 @@
 import { faker } from "@faker-js/faker";
 import {
+  createCryptoEventStore,
+  createWebCryptoProvider,
+  type CryptoContext,
+} from "@wataruoguchi/emmett-crypto-shredding";
+import {
+  createKeyManagement,
+  createPolicies,
+  createPolicyResolver,
+} from "@wataruoguchi/emmett-crypto-shredding-kysely";
+import {
   createProjectionRegistry,
   createProjectionRunner,
   getKyselyEventStore,
 } from "@wataruoguchi/emmett-event-store-kysely";
 import type { Hono } from "hono";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import z from "zod";
 import { createTestDb } from "../../../dev-tools/database/create-test-db.js";
 import { seedTestDb } from "../../../dev-tools/database/seed-test-db.js";
@@ -34,13 +52,33 @@ describe("Generator Integration", () => {
 
   beforeAll(async () => {
     db = await createTestDb(TEST_DB_NAME);
+    tenantId = (await seedTestDb(db).createTenant()).id;
+    await createPolicies(db, [
+      {
+        policyId: `${tenantId}-generator`,
+        partition: tenantId,
+        keyScope: "stream",
+        streamTypeClass: "generator",
+        encryptionAlgorithm: "AES-GCM",
+        keyRotationIntervalDays: 180,
+      },
+    ]);
     const tenantPort = createTenantModule({ db, logger });
     const generatorPort = createGeneratorModule({ tenantPort, db, logger });
     app = createGeneratorHttpAdapter({ generatorPort, logger });
-    tenantId = (await seedTestDb(db).createTenant()).id;
 
     // Projection runner (in-test integration of the worker)
-    const { readStream } = getKyselyEventStore({ db, logger });
+    const { readStream } = createCryptoEventStore(
+      getKyselyEventStore({ db, logger }),
+      {
+        policy: createPolicyResolver(db, logger),
+        keys: createKeyManagement(db),
+        crypto: createWebCryptoProvider(),
+        buildAAD: ({ partition, streamId }: CryptoContext) =>
+          new TextEncoder().encode(`${partition}:${streamId}`),
+        logger,
+      },
+    );
     const registry = createProjectionRegistry(generatorsSnapshotProjection());
     const runner = createProjectionRunner({
       db,

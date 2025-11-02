@@ -1,19 +1,26 @@
 {
   "name": "poc-emmett-monorepo",
   "type": "module",
+  "private": true,
   "scripts": {
     "test:example": "cd example && npm run test",
     "test:emmett-event-store-kysely": "cd packages/emmett-event-store-kysely && npm run test",
-    "test": "npm run test:example && npm run test:emmett-event-store-kysely",
+    "test:emmett-crypto-shredding": "cd packages/emmett-crypto-shredding && npm run test",
+    "test:emmett-crypto-shredding-kysely": "cd packages/emmett-crypto-shredding-kysely && npm run test",
+    "test": "npm run test:emmett-event-store-kysely && npm run test:emmett-crypto-shredding && npm run test:emmett-crypto-shredding-kysely && npm run test:example",
     "prepare": "husky",
-    "format": "biome format --write"
+    "format": "biome format --write",
+    "docs:dev": "vitepress dev docs --host",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs --host"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",
     "@types/node": "^20.11.17",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitepress": "^2.0.0-alpha.12"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [
