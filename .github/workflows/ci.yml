@@ -44,6 +44,16 @@ jobs:
       - name: Build package
         run: npm run build
 
+      - name: Upload build artifacts - ${{ matrix.package }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.package }}-dist
+          path: |
+            ./packages/${{ matrix.package }}/dist
+            ./packages/${{ matrix.package }}/package.json
+            ./packages/${{ matrix.package }}/README.md
+          if-no-files-found: error
+
   release:
     name: Release - (semantic-release-monorepo)
     runs-on: ubuntu-latest
