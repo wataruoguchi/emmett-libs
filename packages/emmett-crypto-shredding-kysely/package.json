@@ -34,9 +34,7 @@
     "pretest": "cd ../emmett-crypto-shredding && npm install && npm run build",
     "preinstall": "cd ../emmett-crypto-shredding && npm install && npm run build",
     "test": "npm run type-check && vitest run",
-    "test:coverage": "vitest run --coverage",
-    "release": "semantic-release",
-    "release:dry-run": "semantic-release --dry-run"
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@types/node": "^24.9.2",
