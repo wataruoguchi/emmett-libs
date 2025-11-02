@@ -10,6 +10,8 @@
     "test": "npm run test:emmett-event-store-kysely && npm run test:emmett-crypto-shredding && npm run test:emmett-crypto-shredding-kysely && npm run test:example",
     "prepare": "husky",
     "format": "biome format --write",
+    "release": "semantic-release",
+    "release:dry-run": "semantic-release --dry-run",
     "docs:dev": "vitepress dev docs --host",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs --host"
