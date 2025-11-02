@@ -31,7 +31,7 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json && tsup src/index.ts",
     "type-check": "tsc --noEmit",
     "tc": "npm run type-check",
-    "pretest": "cd ../emmett-crypto-shredding && npm run build",
+    "pretest": "cd ../emmett-crypto-shredding && npm install && npm run build",
     "test": "npm run type-check && vitest run",
     "test:coverage": "vitest run --coverage",
     "release": "semantic-release",
