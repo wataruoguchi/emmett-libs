@@ -56,7 +56,8 @@
     "kysely": "0"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "4.9.5"
+    "@rollup/rollup-linux-x64-gnu": "4.9.5",
+    "@wataruoguchi/emmett-crypto-shredding": "file:../emmett-crypto-shredding"
   },
   "keywords": [
     "emmett",
