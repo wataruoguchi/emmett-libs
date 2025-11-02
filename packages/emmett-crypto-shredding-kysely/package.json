@@ -52,8 +52,10 @@
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },
+  "dependencies": {
+    "@wataruoguchi/emmett-crypto-shredding": "file:../emmett-crypto-shredding"
+  },
   "peerDependencies": {
-    "@wataruoguchi/emmett-crypto-shredding": "file:../emmett-crypto-shredding",
     "kysely": "0"
   },
   "optionalDependencies": {
