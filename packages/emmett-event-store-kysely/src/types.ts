@@ -3,6 +3,13 @@ import type { Kysely } from "kysely";
 // Database executor that works with any Kysely database
 export type DatabaseExecutor<T = any> = Kysely<T>;
 
+/**
+ * Flexible database type that accepts any Kysely instance.
+ * The `Kysely<any> | any` union type is intentional to work around Kysely's private field variance
+ * issue in TypeScript, allowing DatabaseExecutor from different modules to be passed.
+ */
+export type FlexibleDatabase = Kysely<any> | any;
+
 export type Logger = {
   info: (obj: unknown, msg?: string) => void;
   error: (obj: unknown, msg?: string) => void;
@@ -10,8 +17,8 @@ export type Logger = {
   debug?: (obj: unknown, msg?: string) => void;
 };
 
-export type Dependencies<T = any> = {
-  db: DatabaseExecutor<T>;
+export type Dependencies = {
+  db: FlexibleDatabase;
   logger: Logger;
   /** If true, the provided db is already a transaction executor. */
   inTransaction?: boolean;
@@ -59,13 +66,13 @@ export type ProjectionEvent<E extends { type: string; data: unknown }> = E & {
   metadata: ProjectionEventMetadata;
 };
 
-export type ProjectionContext<T = DatabaseExecutor<any>> = {
+export type ProjectionContext<T = FlexibleDatabase> = {
   db: T;
   partition: string;
 };
 
 export type ProjectionHandler<
-  T = DatabaseExecutor<any>,
+  T = FlexibleDatabase,
   E extends { type: string; data: unknown } = { type: string; data: unknown },
 > = (
   ctx: ProjectionContext<T>,
@@ -77,13 +84,14 @@ export type ProjectionHandler<
  * The `any` in `ProjectionHandler<T, any>[]` is intentional - it allows handlers
  * for different event types to be registered together, with type safety enforced
  * at the handler level through the ProjectionHandler generic parameter.
+ * Uses FlexibleDatabase by default to work around Kysely's private field variance issue.
  */
-export type ProjectionRegistry<T = DatabaseExecutor<any>> = Record<
+export type ProjectionRegistry<T = FlexibleDatabase> = Record<
   string,
   ProjectionHandler<T, { type: string; data: unknown }>[]
 >;
 
-export function createProjectionRegistry<T = DatabaseExecutor<any>>(
+export function createProjectionRegistry<T = FlexibleDatabase>(
   ...registries: ProjectionRegistry<T>[]
 ): ProjectionRegistry<T> {
   const combined: ProjectionRegistry<T> = {};

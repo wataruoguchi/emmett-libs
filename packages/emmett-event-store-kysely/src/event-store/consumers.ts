@@ -149,7 +149,7 @@ export function createKyselyEventStoreConsumer({
           created_at: new Date(),
           updated_at: new Date(),
         })
-        .onConflict((oc) =>
+        .onConflict((oc: any) =>
           oc.column("consumer_name").doUpdateSet({
             last_processed_position: lastProcessedPosition,
             last_processed_transaction_id: lastProcessedPosition,

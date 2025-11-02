@@ -231,9 +231,9 @@ export function createSnapshotProjectionRegistry<
 >(
   eventTypes: E["type"][],
   config: SnapshotProjectionConfig<TState, TTable, E>,
-): ProjectionRegistry<DatabaseExecutor> {
+): ProjectionRegistry {
   const handler = createSnapshotProjection(config);
-  const registry: ProjectionRegistry<DatabaseExecutor> = {};
+  const registry: ProjectionRegistry = {};
 
   for (const eventType of eventTypes) {
     // Type cast is safe here because ProjectionHandler is contravariant in its event type parameter.

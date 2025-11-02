@@ -1,12 +1,8 @@
 import type { Event } from "@event-driven-io/emmett";
-import type { OnConflictBuilder } from "kysely";
+import type { Kysely, OnConflictBuilder } from "kysely";
 import type { EventStoreDBSchema } from "../db-schema.js";
 import type { KyselyEventStore } from "../event-store/kysely-event-store.js";
-import type {
-  DatabaseExecutor,
-  ProjectionEvent,
-  ProjectionRegistry,
-} from "../types.js";
+import type { ProjectionEvent, ProjectionRegistry } from "../types.js";
 
 export type SubscriptionCheckpoint = {
   subscriptionId: string;
@@ -14,17 +10,21 @@ export type SubscriptionCheckpoint = {
   lastProcessedPosition: bigint;
 };
 
-export type ProjectionRunnerDeps<
-  T extends DatabaseExecutor = DatabaseExecutor,
-> = {
-  db: T;
+/**
+ * Flexible database type for projection runner.
+ * Uses `Kysely<any> | any` to work around Kysely's private field variance issue.
+ */
+export type ProjectionRunnerDeps = {
+  db: Kysely<any> | any;
   readStream: KyselyEventStore["readStream"];
-  registry: ProjectionRegistry<T>;
+  registry: ProjectionRegistry;
 };
 
-export function createProjectionRunner<
-  T extends DatabaseExecutor = DatabaseExecutor,
->({ db, readStream, registry }: ProjectionRunnerDeps<T>) {
+export function createProjectionRunner({
+  db,
+  readStream,
+  registry,
+}: ProjectionRunnerDeps) {
   type EventWithMetadata = Event & {
     metadata: {
       streamId: string;

@@ -99,7 +99,7 @@ export const getKyselyEventStore = (deps: Dependencies): KyselyEventStore => {
     async withSession<T = unknown>(
       callback: (session: EventStoreSession<KyselyEventStore>) => Promise<T>,
     ): Promise<T> {
-      return await db.transaction().execute(async (trx) => {
+      return await db.transaction().execute(async (trx: any) => {
         const sessionEventStore = getKyselyEventStore({
           db: trx as any,
           logger,
@@ -244,7 +244,9 @@ export const getKyselyEventStore = (deps: Dependencies): KyselyEventStore => {
       if (inTransaction) {
         return executeOn(db);
       }
-      return db.transaction().execute(async (trx) => executeOn(trx as any));
+      return db
+        .transaction()
+        .execute(async (trx: any) => executeOn(trx as any));
     },
 
     close: async () => {
