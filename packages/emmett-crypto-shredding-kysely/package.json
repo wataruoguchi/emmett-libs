@@ -32,6 +32,7 @@
     "type-check": "tsc --noEmit",
     "tc": "npm run type-check",
     "pretest": "cd ../emmett-crypto-shredding && npm install && npm run build",
+    "preinstall": "cd ../emmett-crypto-shredding && npm install && npm run build",
     "test": "npm run type-check && vitest run",
     "test:coverage": "vitest run --coverage",
     "release": "semantic-release",
@@ -52,10 +53,8 @@
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },
-  "dependencies": {
-    "@wataruoguchi/emmett-crypto-shredding": "file:../emmett-crypto-shredding"
-  },
   "peerDependencies": {
+    "@wataruoguchi/emmett-crypto-shredding": "file:../emmett-crypto-shredding",
     "kysely": "0"
   },
   "optionalDependencies": {
