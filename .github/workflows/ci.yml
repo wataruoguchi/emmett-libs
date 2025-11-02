@@ -55,15 +55,20 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Release - (semantic-release-monorepo)
+    name: Release - ${{ matrix.package }}
     runs-on: ubuntu-latest
     needs: quality
     if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        package:
+          - emmett-event-store-kysely
+          - emmett-crypto-shredding
+          - emmett-crypto-shredding-kysely
     permissions:
       contents: write
       issues: write
       pull-requests: write
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -80,12 +85,14 @@ jobs:
       - name: Cache dependencies
         uses: actions/cache@v4
         with:
-          path: 'node_modules'
+          path: |
+            node_modules
+            packages/*/node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
 
-      - name: Install dependencies
+      - name: Install root dependencies
         run: npm ci
 
       - name: Configure Git
@@ -93,26 +100,15 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Download build artifacts - emmett-event-store-kysely
+      - name: Download build artifacts - ${{ matrix.package }}
         uses: actions/download-artifact@v4
         with:
-          name: emmett-event-store-kysely-dist
-          path: ./packages/emmett-event-store-kysely
-
-      - name: Download build artifacts - emmett-crypto-shredding
-        uses: actions/download-artifact@v4
-        with:
-          name: emmett-crypto-shredding-dist
-          path: ./packages/emmett-crypto-shredding
-
-      - name: Download build artifacts - emmett-crypto-shredding-kysely
-        uses: actions/download-artifact@v4
-        with:
-          name: emmett-crypto-shredding-kysely-dist
-          path: ./packages/emmett-crypto-shredding-kysely
+          name: ${{ matrix.package }}-dist
+          path: ./packages/${{ matrix.package }}
 
       - name: Release
+        working-directory: ./packages/${{ matrix.package }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npx semantic-release
+        run: npx semantic-release --extends ../../.releaserc.json
