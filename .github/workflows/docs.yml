@@ -40,8 +40,21 @@ jobs:
       - name: Clean previous build
         run: rm -rf docs/.vitepress/dist
 
+      - name: Verify VitePress config
+        run: |
+          echo "Checking config file..."
+          cat docs/.vitepress/config.ts | grep -A 1 "base:"
+          echo ""
+          echo "Config file exists:"
+          ls -la docs/.vitepress/config.ts
+
       - name: Build VitePress site
         run: npm run docs:build
+
+      - name: Verify build output base path
+        run: |
+          echo "Checking built HTML for base path..."
+          grep -o '"base":"[^"]*"' docs/.vitepress/dist/index.html || echo "Base path not found in HTML"
 
       - name: Ensure .nojekyll exists
         run: touch docs/.vitepress/dist/.nojekyll

@@ -28,5 +28,6 @@ lerna-debug.log*
 .DS_Store
 *.ignored.*
 coverage/
-docs/.vitepress/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
 
