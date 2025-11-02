@@ -52,12 +52,12 @@
     "vitest": "^3.2.4"
   },
   "peerDependencies": {
-    "@wataruoguchi/emmett-crypto-shredding": "0",
+    "@wataruoguchi/emmett-crypto-shredding": "file:../emmett-crypto-shredding",
     "kysely": "0"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "4.9.5",
-    "@wataruoguchi/emmett-crypto-shredding": "file:../emmett-crypto-shredding"
+    "@wataruoguchi/emmett-crypto-shredding": "0"
   },
   "keywords": [
     "emmett",
