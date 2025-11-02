@@ -6,8 +6,6 @@ hero:
   name: "@wataruoguchi"
   text: "/emmett-libs"
   tagline: "Event Sourcing Libraries built on Emmett"
-  
-# Trigger deployment to fix asset paths
   actions:
     - theme: brand
       text: "Event Store Kysely"
