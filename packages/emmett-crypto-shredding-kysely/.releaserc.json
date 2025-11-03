@@ -1,4 +1,5 @@
 {
-  "extends": ["../../.releaserc.json"]
+  "extends": ["semantic-release-monorepo", "../../.releaserc.json"],
+  "tagFormat": "${name}-v${version}"
 }
 
