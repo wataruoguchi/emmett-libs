@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.0.0",
+  "version": "2.1.2",
   "description": "A Crypto Shredding implementation for Emmett",
   "author": "Wataru Oguchi",
   "license": "MIT",
