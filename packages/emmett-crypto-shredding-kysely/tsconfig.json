@@ -2,6 +2,7 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "strict": true,
     "noImplicitReturns": true,
     "noUnusedLocals": true,
@@ -11,7 +12,11 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "types": ["node"],
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "paths": {
+      "@wataruoguchi/emmett-crypto-shredding": ["../emmett-crypto-shredding/dist/index.d.ts"]
+    }
   },
   "exclude": ["node_modules", "database/**/*", "vitest.config.ts"]
 }

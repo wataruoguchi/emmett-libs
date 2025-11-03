@@ -73,6 +73,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -99,6 +100,12 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch tags and refs
+        run: |
+          git fetch origin --tags --force
+          git checkout -B main origin/main || git checkout main
+          git reset --hard origin/main
 
       - name: Download build artifacts - ${{ matrix.package }}
         uses: actions/download-artifact@v4

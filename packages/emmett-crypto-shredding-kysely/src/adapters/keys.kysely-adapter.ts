@@ -20,7 +20,13 @@ import type { Kysely } from "kysely";
  */
 function createKyselyKeyStorage(db: Kysely<any> | any): KeyStorage {
   return {
-    async findActiveKey({ partition, keyRef }) {
+    async findActiveKey({
+      partition,
+      keyRef,
+    }: {
+      partition: string;
+      keyRef: string;
+    }) {
       const result = await (db.selectFrom("encryption_keys" as any) as any)
         .select(["key_id", "key_version", "key_material"])
         .where("partition", "=", partition)
@@ -41,7 +47,13 @@ function createKyselyKeyStorage(db: Kysely<any> | any): KeyStorage {
       };
     },
 
-    async findKeyById({ partition, keyId }) {
+    async findKeyById({
+      partition,
+      keyId,
+    }: {
+      partition: string;
+      keyId: string;
+    }) {
       const result = await (db.selectFrom("encryption_keys" as any) as any)
         .select(["key_id", "key_version", "key_material"])
         .where("key_id", "=", keyId)
@@ -60,7 +72,13 @@ function createKyselyKeyStorage(db: Kysely<any> | any): KeyStorage {
       };
     },
 
-    async findCurrentActiveKeyVersion({ partition, keyRef }) {
+    async findCurrentActiveKeyVersion({
+      partition,
+      keyRef,
+    }: {
+      partition: string;
+      keyRef: string;
+    }) {
       const result = await (db.selectFrom("encryption_keys" as any) as any)
         .select(["key_version"])
         .where("partition", "=", partition)
@@ -73,7 +91,17 @@ function createKyselyKeyStorage(db: Kysely<any> | any): KeyStorage {
       return result?.key_version ?? null;
     },
 
-    async insertKey({ keyId, partition, keyMaterial, keyVersion }) {
+    async insertKey({
+      keyId,
+      partition,
+      keyMaterial,
+      keyVersion,
+    }: {
+      keyId: string;
+      partition: string;
+      keyMaterial: Uint8Array;
+      keyVersion: number;
+    }) {
       await (db.insertInto("encryption_keys" as any) as any)
         .values({
           key_id: keyId,
@@ -86,7 +114,13 @@ function createKyselyKeyStorage(db: Kysely<any> | any): KeyStorage {
         .execute();
     },
 
-    async deactivateKeys({ partition, keyRef }) {
+    async deactivateKeys({
+      partition,
+      keyRef,
+    }: {
+      partition: string;
+      keyRef: string;
+    }) {
       await (db.updateTable("encryption_keys" as any) as any)
         .set({ is_active: false, updated_at: new Date() })
         .where("partition", "=", partition)
@@ -95,7 +129,7 @@ function createKyselyKeyStorage(db: Kysely<any> | any): KeyStorage {
         .execute();
     },
 
-    async destroyPartitionKeys({ partition }) {
+    async destroyPartitionKeys({ partition }: { partition: string }) {
       await (db.updateTable("encryption_keys" as any) as any)
         .set({
           destroyed_at: new Date(),

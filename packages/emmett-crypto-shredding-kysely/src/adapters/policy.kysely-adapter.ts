@@ -40,7 +40,13 @@ function createKyselyPolicyStorage(
   logger?: Logger,
 ): PolicyStorage {
   return {
-    async findPolicy({ partition, streamType }) {
+    async findPolicy({
+      partition,
+      streamType,
+    }: {
+      partition: string;
+      streamType: string | null;
+    }) {
       // Require streamType to be explicitly provided - no implicit "default" lookup
       if (streamType === null || streamType === undefined) {
         throw new PolicyResolutionError(

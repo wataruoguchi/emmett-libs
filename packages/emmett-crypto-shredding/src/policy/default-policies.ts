@@ -1,4 +1,5 @@
 import type { SupportedAlgorithm } from "../types.js";
+import type { KeyScope } from "./policy.resolver.js";
 
 /**
  * Default encryption policy configuration
@@ -8,7 +9,7 @@ export interface PolicyConfig {
   streamTypeClass: string;
   encryptionAlgorithm: SupportedAlgorithm;
   keyRotationIntervalDays: number;
-  keyScope: "stream" | "type" | "partition";
+  keyScope: KeyScope;
   partition: string;
 }
 

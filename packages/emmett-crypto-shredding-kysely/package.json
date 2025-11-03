@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Kysely adapters for Emmett Crypto Shredding",
   "author": "Wataru Oguchi",
   "license": "MIT",
@@ -28,11 +28,12 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && tsup src/index.ts",
+    "build": "npm run resolve-deps && rm -rf dist && tsc -p tsconfig.build.json && tsup src/index.ts",
     "type-check": "tsc --noEmit",
     "tc": "npm run type-check",
-    "pretest": "cd ../emmett-crypto-shredding && npm install && npm run build",
+    "pretest": "npm run resolve-deps",
     "preinstall": "cd ../emmett-crypto-shredding && npm install && npm run build",
+    "resolve-deps": "cd ../emmett-crypto-shredding && npm install && npm run build",
     "test": "npm run type-check && vitest run",
     "test:coverage": "vitest run --coverage"
   },
@@ -45,12 +46,13 @@
     "vitest": "^3.2.4"
   },
   "peerDependencies": {
+    "@event-driven-io/emmett": "0",
     "@wataruoguchi/emmett-crypto-shredding": "file:../emmett-crypto-shredding",
     "kysely": "0"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "4.9.5",
-    "@wataruoguchi/emmett-crypto-shredding": "0"
+    "@wataruoguchi/emmett-crypto-shredding": "1"
   },
   "keywords": [
     "emmett",
