@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.1.2",
+  "version": "2.2.5",
   "description": "Kysely adapters for Emmett Crypto Shredding",
   "author": "Wataru Oguchi",
   "license": "MIT",

@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.1.2",
+  "version": "2.2.5",
   "description": "Emmett Event Store with Kysely",
   "author": "Wataru Oguchi",
   "license": "MIT",
