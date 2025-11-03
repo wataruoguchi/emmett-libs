@@ -13,6 +13,9 @@ hero:
     - theme: brand
       text: "Crypto Shredding"
       link: /emmett-crypto-shredding
+    - theme: brand
+      text: "Crypto Shredding Kysely adopter"
+      link: /emmett-crypto-shredding
 
 features:
   - title: Event Store for PostgreSQL
