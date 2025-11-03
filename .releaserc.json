@@ -1,7 +1,7 @@
 {
   "branches": ["main"],
   "extends": "semantic-release-monorepo",
-  "repositoryUrl": "git+https://github.com/wataruoguchi/emmett-libs.git",
+  "repositoryUrl": "https://github.com/wataruoguchi/emmett-libs",
   "plugins": [
     [
       "@semantic-release/commit-analyzer",
