@@ -25,46 +25,77 @@ npm install @wataruoguchi/emmett-crypto-shredding @event-driven-io/emmett
 
 ## Quick Start
 
-### 1. Create a Crypto Event Store
+### 1. Set Up Database Tables
+
+Create the encryption keys and policies tables in your database. See the [complete documentation](https://wataruoguchi.github.io/emmett-libs/emmett-crypto-shredding#step-1-set-up-database-tables) for the SQL schema.
+
+### 2. Create a Crypto Event Store in Your Module
+
+The crypto event store wraps your existing event store. Create it at the module level and use it with `DeciderCommandHandler`:
+
+**Without Crypto (e.g., Cart Module):**
 
 ```typescript
-import { createCryptoEventStore, createWebCryptoProvider } from "@wataruoguchi/emmett-crypto-shredding";
+// example/src/modules/cart/cart.module.ts
+import { getKyselyEventStore } from "@wataruoguchi/emmett-event-store-kysely";
+
+export function createCartModule({ db, logger }: Dependencies) {
+  const eventStore = getKyselyEventStore({ db, logger });
+  const eventHandler = cartEventHandler({ eventStore, getContext });
+  // ... rest of module setup
+}
+```
+
+**With Crypto (e.g., Generator Module):**
+
+```typescript
+// example/src/modules/generator/generator.module.ts
+import { getKyselyEventStore } from "@wataruoguchi/emmett-event-store-kysely";
+import { createCryptoEventStore, createWebCryptoProvider, type CryptoContext } from "@wataruoguchi/emmett-crypto-shredding";
 import { createPolicyResolver, createKeyManagement } from "@wataruoguchi/emmett-crypto-shredding-kysely";
 
-const cryptoStore = createCryptoEventStore(baseStore, {
-  policy: createPolicyResolver(db, logger),
-  keys: createKeyManagement(db),
-  crypto: createWebCryptoProvider(),
-  buildAAD: (ctx) => {
-    return JSON.stringify({
-      partition: ctx.partition,
-      streamId: ctx.streamId,
-      streamType: ctx.streamType,
-      eventType: ctx.eventType,
-    });
-  },
-  logger,
-});
+export function createGeneratorModule({ db, logger }: Dependencies) {
+  // Wrap the base event store with crypto
+  const eventStore = createCryptoEventStore(
+    getKyselyEventStore({ db, logger }),  // Base store
+    {
+      policy: createPolicyResolver(db, logger),
+      keys: createKeyManagement(db),
+      crypto: createWebCryptoProvider(),
+      buildAAD: ({ partition, streamId }: CryptoContext) =>
+        new TextEncoder().encode(`${partition}:${streamId}`),
+      logger,
+    },
+  );
+  const eventHandler = generatorEventHandler({ eventStore, getContext });
+  // ... rest of module setup (identical to cart module)
+}
 ```
 
-### 2. Use the Crypto Event Store
+**That's it!** The crypto event store is a drop-in replacement. Your event handlers, command handlers, and all other code remain exactly the same. Encryption/decryption happens transparently based on policies—no changes needed to your domain logic.
 
-The crypto event store has the same interface as the base event store, but automatically encrypts/decrypts events based on policies:
+### 3. Define Encryption Policies
+
+Set up which streams should be encrypted:
 
 ```typescript
-// Write events - automatically encrypted if policy requires it
-await cryptoStore.appendToStream("user-123", [userCreatedEvent], {
-  partition: "tenant-123",
-  streamType: "user-data",
-});
+import { createPolicies } from "@wataruoguchi/emmett-crypto-shredding-kysely";
 
-// Read events - automatically decrypted
-const result = await cryptoStore.readStream("user-123", {
-  partition: "tenant-123",
-});
+await createPolicies(db, [
+  {
+    policyId: "tenant-123-generator",
+    partition: "tenant-123",
+    streamTypeClass: "generator",
+    encryptionAlgorithm: "AES-GCM",
+    keyRotationIntervalDays: 180,
+    keyScope: "stream",
+  },
+]);
 ```
 
-### 3. Crypto Shredding (GDPR Compliance)
+### 4. Crypto Shredding (GDPR Compliance)
+
+Destroy encryption keys to make data permanently unrecoverable:
 
 ```typescript
 // Destroy all keys for a partition - makes data permanently unrecoverable
