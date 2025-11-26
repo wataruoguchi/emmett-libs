@@ -1121,7 +1121,7 @@ describe("Feature: Crypto Shredding for Generator Events", () => {
         {
           policyId: `${tenantScopeTenantId}-partition-scope`,
           partition: tenantScopeTenantId,
-          keyScope: "partition",
+          keyScope: "tenant",
           streamTypeClass: "generator",
           encryptionAlgorithm: "AES-GCM",
           keyRotationIntervalDays: 180,
