@@ -51,6 +51,10 @@
         "znck.grammarly"
       ]
     }
+  },
+  "mounts": ["type=bind,source=${localEnv:HOME}/.ssh,target=/home/node/.ssh"],
+  "remoteEnv": {
+    "SSH_AUTH_SOCK": "/ssh-agent"
   }
   // Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
   // "remoteUser": "root"
