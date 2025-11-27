@@ -32,7 +32,6 @@
     "type-check": "tsc --noEmit",
     "tc": "npm run type-check",
     "pretest": "npm run resolve-deps",
-    "preinstall": "cd ../emmett-crypto-shredding && npm install && npm run build",
     "resolve-deps": "cd ../emmett-crypto-shredding && npm install && npm run build",
     "test": "npm run type-check && vitest run",
     "test:coverage": "vitest run --coverage"
