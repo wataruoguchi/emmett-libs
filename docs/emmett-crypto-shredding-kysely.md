@@ -16,7 +16,7 @@ npm install @wataruoguchi/emmett-crypto-shredding-kysely @wataruoguchi/emmett-cr
 
 ### 1. Run Database Migration
 
-Copy the migration file from `database/migrations/` to your migrations directory.
+Copy the migration file from [`database/migrations/`](https://github.com/wataruoguchi/emmett-libs/blob/main/packages/emmett-crypto-shredding-kysely/database/migrations/1761627233034_crypto_shredding.ts) to your migrations directory.
 
 ### 2. Create Key Management and Policy Resolver
 
