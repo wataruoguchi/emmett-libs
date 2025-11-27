@@ -263,18 +263,18 @@ describe("Feature: Kysely Policy Storage Adapter", () => {
   });
 
   describe("Scenario: Policy Resolution", () => {
-    it("Given no policy exists, When resolving policy, Then it should return no encryption", async () => {
+    it("Given no policy exists, When resolving policy, Then it should throw error", async () => {
       const { db } = createMockDb();
       const logger = createMockLogger();
       const policyResolver = createPolicyResolver(db, logger);
 
-      const result = await policyResolver.resolve({
-        partition: "p1",
-        streamId: "stream-1",
-        streamType: "unknown",
-      });
-
-      expect(result.encrypt).toBe(false);
+      await expect(
+        policyResolver.resolve({
+          partition: "p1",
+          streamId: "stream-1",
+          streamType: "unknown",
+        }),
+      ).rejects.toThrow("No encryption policy found");
     });
 
     it("Given policy exists, When resolving policy, Then it should return encryption config", async () => {

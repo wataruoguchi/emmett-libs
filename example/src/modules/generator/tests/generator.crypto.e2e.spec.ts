@@ -1121,7 +1121,7 @@ describe("Feature: Crypto Shredding for Generator Events", () => {
         {
           policyId: `${tenantScopeTenantId}-partition-scope`,
           partition: tenantScopeTenantId,
-          keyScope: "tenant",
+          keyScope: "partition",
           streamTypeClass: "generator",
           encryptionAlgorithm: "AES-GCM",
           keyRotationIntervalDays: 180,
@@ -1205,7 +1205,7 @@ describe("Feature: Crypto Shredding for Generator Events", () => {
     });
   });
 
-  describe("Scenario: Selective Encryption", () => {
+  describe("Scenario: Policy Enforcement", () => {
     let selectiveTenantId: string;
     let selectiveApp: Hono;
     let selectiveCryptoEventStore: KyselyEventStore;
@@ -1216,8 +1216,8 @@ describe("Feature: Crypto Shredding for Generator Events", () => {
     beforeAll(async () => {
       selectiveTenantId = (await seedTestDb(db).createTenant()).id;
 
-      // Create policy ONLY for "generator" stream type
-      // Other stream types should NOT be encrypted
+      // Create policy for "generator" stream type during tenant onboarding
+      // Stream types without policies will cause errors (fail-fast behavior)
       await createPolicies(db, [
         {
           policyId: `${selectiveTenantId}-generator`,
@@ -1227,7 +1227,8 @@ describe("Feature: Crypto Shredding for Generator Events", () => {
           encryptionAlgorithm: "AES-GCM",
           keyRotationIntervalDays: 180,
         },
-        // Intentionally NOT creating a policy for "cart" or other types
+        // Not creating policies for other stream types (e.g., "cart")
+        // Attempting to append to those streams will throw errors
       ]);
 
       const tenantPort = createTenantModule({ db, logger });
@@ -1303,10 +1304,9 @@ describe("Feature: Crypto Shredding for Generator Events", () => {
       expect(metadata?.enc?.algo).toBeDefined();
     });
 
-    it("should handle encrypted and non-encrypted streams in same partition", async () => {
-      // This test verifies that the crypto store correctly handles mixed scenarios
-      // In practice, if you have multiple stream types, some with policies and some without,
-      // the store should encrypt only those with policies
+    it("should encrypt and decrypt streams with policies", async () => {
+      // This test verifies that the crypto store correctly encrypts and decrypts
+      // streams that have encryption policies configured
 
       // Generator (has policy) - should be encrypted
       const genResponse = await selectiveApp.request(
@@ -1347,9 +1347,9 @@ describe("Feature: Crypto Shredding for Generator Events", () => {
       expect(eventData).not.toHaveProperty("ciphertext");
     });
 
-    it("should NOT encrypt streams without policies", async () => {
+    it("should throw error when appending to stream without policy", async () => {
       // Create an event for a stream type that has NO policy (e.g., "cart")
-      // This verifies that only streams with policies are encrypted
+      // This verifies that missing policies are caught early (fail-fast)
       const cartStreamId = `cart-${crypto.randomUUID()}`;
       const cartEvent = {
         type: "CartCreated",
@@ -1367,66 +1367,27 @@ describe("Feature: Crypto Shredding for Generator Events", () => {
         },
       };
 
-      // Append event with streamType "cart" (no policy exists for this type)
-      await selectiveCryptoEventStore.appendToStream(
-        cartStreamId,
-        [cartEvent],
-        {
+      // Attempt to append event with streamType "cart" (no policy exists for this type)
+      // This should throw PolicyResolutionError
+      await expect(
+        selectiveCryptoEventStore.appendToStream(cartStreamId, [cartEvent], {
           partition: selectiveTenantId,
           streamType: "cart",
-        },
-      );
+        }),
+      ).rejects.toThrow("No encryption policy found");
 
-      // Verify the event was stored in plaintext (not encrypted)
+      // Verify no event was stored
       const cartMessages = await db
         .selectFrom("messages")
-        .select(["message_data", "message_metadata"])
+        .select(["message_data"])
         .where("stream_id", "=", cartStreamId)
         .where("partition", "=", selectiveTenantId)
         .executeTakeFirst();
 
-      // Message data should NOT contain ciphertext - should be plain JSON
-      const messageData = cartMessages?.message_data;
-      expect(messageData).toBeDefined();
+      expect(cartMessages).toBeUndefined();
 
-      // Verify it's NOT encrypted format (no ciphertext property)
-      const encryptedFormatSchema = z.object({ ciphertext: z.string() });
-      expect(encryptedFormatSchema.safeParse(messageData).success).toBe(false);
-
-      // Verify it IS the original event data structure
-      const plaintextSchema = z.object({
-        eventData: z.object({
-          cartId: z.string(),
-          tenantId: z.string(),
-          items: z.array(z.unknown()),
-        }),
-        eventMeta: z.object({
-          tenantId: z.string(),
-          cartId: z.string(),
-          version: z.number(),
-        }),
-      });
-      expect(plaintextSchema.safeParse(messageData).success).toBe(true);
-
-      // Verify NO encryption metadata
-      const cartMetadata = cartMessages?.message_metadata as {
-        enc?: { algo?: string };
-      } | null;
-      expect(cartMetadata?.enc).toBeUndefined();
-
-      // Verify reading works correctly (no decryption needed)
-      const streamResult = await selectiveCryptoEventStore.readStream(
-        cartStreamId,
-        {
-          partition: selectiveTenantId,
-        },
-      );
-
-      expect(streamResult.events.length).toBe(1);
-      const eventData = (streamResult.events[0] as any).data;
-      expect(eventData).not.toHaveProperty("ciphertext");
-      expect(eventData).toHaveProperty("eventData");
-      expect(eventData.eventData.cartId).toBe(cartStreamId);
+      // This fail-fast behavior ensures configuration errors are caught immediately
+      // rather than silently storing data unencrypted when encryption was expected
     });
   });
 
