@@ -146,16 +146,37 @@ describe("Feature: Crypto Event Store", () => {
       });
     });
 
-    it("Given a policy does not require encryption, When appending events, Then events should remain unencrypted", async () => {
+    it("Given an unexpected error in policy storage, When appending events, Then events should remain unencrypted for safety", async () => {
       const base = createMockBaseEventStore();
+
+      // Mock storage layer to throw unexpected error (simulating database connection issue)
+      const storageMock = {
+        findPolicy: vi.fn(async () => {
+          throw new Error("Database connection lost");
+        }),
+      };
+
+      // Create policy resolver with the failing storage
+      const { createPolicyResolver } = await import(
+        "../policy/policy.resolver.js"
+      );
+      const onErrorMock = vi.fn();
+      const policyResolver = createPolicyResolver(storageMock, onErrorMock);
+
       const store = createEventStore(base, {
-        policy: createMockPolicy(false),
+        policy: policyResolver,
       });
 
       const evt = { type: "X", data: { a: 1 } };
-      await (store as any).appendToStream("s1", [evt], { partition: "p1" });
+      await (store as any).appendToStream("s1", [evt], {
+        partition: "p1",
+        streamType: "test-type",
+      });
 
-      // Verify no encryption was applied
+      // Verify error was logged
+      expect(onErrorMock).toHaveBeenCalled();
+
+      // Verify no encryption was applied (graceful degradation)
       const appended = base.appendToStream.mock.calls[0][1][0];
       expect(appended.data).toEqual({ a: 1 });
       expect((appended as any).metadata?.enc).toBeUndefined();

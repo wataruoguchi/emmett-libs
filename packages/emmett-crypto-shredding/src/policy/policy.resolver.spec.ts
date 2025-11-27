@@ -31,17 +31,17 @@ describe("Feature: Policy Resolver", () => {
   }
 
   describe("Scenario: Policy Resolution", () => {
-    it("Given no policy exists, When resolving policy, Then it should return no encryption", async () => {
+    it("Given no policy exists, When resolving policy, Then it should throw PolicyResolutionError", async () => {
       const storage = createMockStorage();
       const resolver = createPolicyResolver(storage);
 
-      const result = await resolver.resolve({
-        partition: "p1",
-        streamId: "stream-1",
-        streamType: "unknown",
-      });
-
-      expect(result.encrypt).toBe(false);
+      await expect(
+        resolver.resolve({
+          partition: "p1",
+          streamId: "stream-1",
+          streamType: "unknown",
+        }),
+      ).rejects.toThrow(PolicyResolutionError);
     });
 
     it("Given policy exists, When resolving policy, Then it should return encryption config", async () => {
@@ -182,7 +182,7 @@ describe("Feature: Policy Resolver", () => {
       ).rejects.toThrow(PolicyResolutionError);
     });
 
-    it("Given type-scoped policy with null keyScope, When resolving policy, Then it should default to type scope", async () => {
+    it("Given policy with null keyScope, When resolving policy, Then it should default to stream scope", async () => {
       const policies = new Map<string, PolicyData>();
       policies.set("p1:test-type", createMockPolicy({ keyScope: null }));
       const storage = createMockStorage(policies);
@@ -196,7 +196,8 @@ describe("Feature: Policy Resolver", () => {
 
       expect(result.encrypt).toBe(true);
       if (result.encrypt) {
-        expect(result.keyRef).toBe("test-type");
+        // When keyScope is null, it defaults to "stream" which uses streamId
+        expect(result.keyRef).toBe("stream-1");
       }
     });
   });
@@ -337,14 +338,16 @@ describe("Feature: Policy Resolver", () => {
         streamType: "test-type",
       });
 
-      const result2 = await resolver.resolve({
-        partition: "p2", // Different partition
-        streamId: "stream-1",
-        streamType: "test-type",
-      });
-
       expect(result1.encrypt).toBe(true);
-      expect(result2.encrypt).toBe(false); // No policy for p2
+
+      // Partition p2 has no policy, should throw error
+      await expect(
+        resolver.resolve({
+          partition: "p2",
+          streamId: "stream-1",
+          streamType: "test-type",
+        }),
+      ).rejects.toThrow(PolicyResolutionError);
     });
   });
 });

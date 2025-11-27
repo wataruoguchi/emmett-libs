@@ -31,6 +31,43 @@ export interface PolicyStorage {
 export type KeyScope = "stream" | "type" | "partition";
 
 /**
+ * Resolves the key reference based on the policy's key scope and context.
+ * Validates that required context fields are present for the given scope.
+ */
+function resolveKeyRef(keyScope: KeyScope, ctx: CryptoContext): string {
+  switch (keyScope) {
+    case "stream":
+      if (!ctx.streamId) {
+        throw new PolicyResolutionError(
+          `Key scope "stream" requires streamId in context, but it was not provided`,
+          ctx,
+        );
+      }
+      return ctx.streamId;
+
+    case "type":
+      if (!ctx.streamType) {
+        throw new PolicyResolutionError(
+          `Key scope "type" requires streamType in context, but it was not provided`,
+          ctx,
+        );
+      }
+      return ctx.streamType;
+
+    case "partition":
+      // Partition scope = one shared key for entire partition/tenant
+      // "default" is sufficient since partition is already scoped by the partition parameter
+      return "default";
+
+    default: {
+      // Exhaustiveness check - TypeScript will error if we miss a case
+      const _exhaustive: never = keyScope;
+      throw new PolicyResolutionError(`Unknown key scope: ${_exhaustive}`, ctx);
+    }
+  }
+}
+
+/**
  * Database-agnostic EncryptionPolicyResolver implementation.
  */
 export function createPolicyResolver(
@@ -46,38 +83,16 @@ export function createPolicyResolver(
         });
 
         if (!policy) {
-          return { encrypt: false };
+          throw new PolicyResolutionError(
+            `No encryption policy found for stream type "${ctx.streamType}" in partition "${ctx.partition}". ` +
+              `Policies must be created before encrypting events. ` +
+              `Use createPolicies() or createDefaultPolicies() to set up encryption policies.`,
+            ctx,
+          );
         }
 
-        // Policy exists means encryption is required
-        // Derive keyRef from keyScope (business logic for determining key reference)
-        const keyScope = (policy.keyScope ?? "type") as KeyScope;
-
-        // Determine keyRef based on scope, validating required context:
-        // - "stream": Requires streamId (unique key per stream)
-        // - "type": Requires streamType (one key per stream type)
-        // - "partition": Always uses "default" (shared key for entire partition)
-        let keyRef: string;
-        if (keyScope === "stream") {
-          if (!ctx.streamId) {
-            throw new PolicyResolutionError(
-              `Key scope "stream" requires streamId in context, but it was not provided`,
-              ctx,
-            );
-          }
-          keyRef = ctx.streamId;
-        } else if (keyScope === "type") {
-          if (!ctx.streamType) {
-            throw new PolicyResolutionError(
-              `Key scope "type" requires streamType in context, but it was not provided`,
-              ctx,
-            );
-          }
-          keyRef = ctx.streamType;
-        } else {
-          // keyScope === "partition"
-          keyRef = "default";
-        }
+        const keyScope = (policy.keyScope ?? "stream") as KeyScope;
+        const keyRef = resolveKeyRef(keyScope, ctx);
 
         return {
           encrypt: true,

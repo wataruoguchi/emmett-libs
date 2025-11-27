@@ -84,7 +84,7 @@ When deciding whether to encrypt a stream, resolve policies in this order:
 Notes:
 
 - The schema uses `partition` as `NOT NULL`, so `"*"` is used to represent a wildcard.
-- **Policy existence = encryption required.** If no policy is found, default to `encrypt: false`.
+- **Policy existence = encryption required.** If no policy is found, a `PolicyResolutionError` is thrown to fail fast and prevent misconfiguration.
 
 ## Best Practices
 
@@ -95,6 +95,11 @@ Notes:
 
 ## Related API
 
-- `EncryptionPolicyResolver`: your runtime lookup that queries `encryption_policies` and returns either `{ encrypt: true, algo, keyRef }` or `{ encrypt: false }`.
+- `EncryptionPolicyResolver`: your runtime lookup that queries `encryption_policies` and returns `{ encrypt: true, algo, keyRef }` when a policy is found, or throws `PolicyResolutionError` if no policy exists.
 - `KeyManagement`: provides the active key for the chosen `keyRef` in a partition.
 - `CryptoProvider`: performs encryption/decryption (e.g., Web Crypto provider).
+
+## Error Handling
+
+- **Missing Policy**: Throws `PolicyResolutionError` to fail fast and alert you to missing policy configuration
+- **Unexpected Errors**: Database connectivity issues or other unexpected errors are logged and result in graceful degradation (events stored unencrypted) to prevent data loss
