@@ -25,47 +25,67 @@ npm install @wataruoguchi/emmett-crypto-shredding-kysely @wataruoguchi/emmett-cr
 
 ### 1. Run Database Migration
 
-Copy the migration file from `database/migrations/1761627233034_crypto_shredding.ts` to your migrations directory.
+Copy the migration file from `database/migrations/1761627233034_crypto_shredding.ts` to your migrations directory and run it.
 
-### 2. Create Key Management
+### 2. Create Encryption Policies
 
-```typescript
-import { createKeyManagement } from '@wataruoguchi/emmett-crypto-shredding-kysely';
-import { Kysely } from 'kysely';
-
-const keyManagement = createKeyManagement(db);
-```
-
-### 3. Create Policy Resolver
+**⚠️ Important:** Create policies **before** encrypting events (typically during tenant onboarding):
 
 ```typescript
-import { createPolicyResolver } from '@wataruoguchi/emmett-crypto-shredding-kysely';
+import { createPolicies } from '@wataruoguchi/emmett-crypto-shredding-kysely';
 
-const policyResolver = createPolicyResolver(db, logger);
-```
-
-### 4. Create Encryption Policies
-
-```typescript
-import { createDefaultPolicies, createPolicies } from '@wataruoguchi/emmett-crypto-shredding-kysely';
-
-// Option 1: Use default policies
-// Creates policies for common stream types:
-// - user-data: AES-GCM, 180 day rotation, stream scope
-// - audit-log: AES-GCM, 365 day rotation, stream scope
-await createDefaultPolicies(db, 'tenant-123');
-
-// Option 2: Create custom policies
+// Example: During tenant onboarding
 await createPolicies(db, [
   {
-    policyId: 'tenant-123-user-data',
-    partition: 'tenant-123',
-    streamTypeClass: 'user-data',
+    policyId: `${tenantId}-generator`,
+    partition: tenantId,
+    streamTypeClass: 'generator', // Stream type to encrypt
     encryptionAlgorithm: 'AES-GCM',
     keyRotationIntervalDays: 180,
-    keyScope: 'stream',
+    keyScope: 'stream', // 'stream' or 'type'
   },
 ]);
+```
+
+Or use default policies:
+
+```typescript
+import { createDefaultPolicies } from '@wataruoguchi/emmett-crypto-shredding-kysely';
+
+// Creates policies for 'user-data' and 'audit-log' stream types
+await createDefaultPolicies(db, tenantId);
+```
+
+### 3. Create Encrypted Event Store
+
+Wire up the crypto event store in your module:
+
+```typescript
+import { 
+  createCryptoEventStore,
+  createWebCryptoProvider,
+} from '@wataruoguchi/emmett-crypto-shredding';
+import {
+  createKeyManagement,
+  createPolicyResolver,
+} from '@wataruoguchi/emmett-crypto-shredding-kysely';
+import { getKyselyEventStore } from '@wataruoguchi/emmett-event-store-kysely';
+
+export function createMyModule({ db, logger }) {
+  const eventStore = createCryptoEventStore(
+    getKyselyEventStore({ db, logger }),
+    {
+      policy: createPolicyResolver(db, logger),
+      keys: createKeyManagement(db),
+      crypto: createWebCryptoProvider(),
+      buildAAD: ({ partition, streamId }) =>
+        new TextEncoder().encode(`${partition}:${streamId}`),
+      logger,
+    },
+  );
+  
+  // Use eventStore with your event handlers...
+}
 ```
 
 ## API Reference
