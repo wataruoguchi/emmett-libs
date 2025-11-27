@@ -20,11 +20,17 @@ export type ProjectionRunnerDeps = {
   registry: ProjectionRegistry;
 };
 
+export type ProjectEvents = (
+  subscriptionId: string,
+  streamId: string,
+  opts?: { partition?: string; batchSize?: number },
+) => Promise<{ processed: number; currentStreamVersion: bigint }>;
+
 export function createProjectionRunner({
   db,
   readStream,
   registry,
-}: ProjectionRunnerDeps) {
+}: ProjectionRunnerDeps): { projectEvents: ProjectEvents } {
   type EventWithMetadata = Event & {
     metadata: {
       streamId: string;

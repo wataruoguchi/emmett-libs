@@ -25,13 +25,17 @@ export type SnapshotProjectionConfig<
   tableName: TTable;
 
   /**
-   * The primary key columns that uniquely identify a row
+   * @deprecated The primary key columns are now automatically inferred from the keys returned by extractKeys.
+   * This field is optional and will be removed in a future version.
+   *
+   * If provided, it will be validated against the keys returned by extractKeys.
    * e.g., ['tenant_id', 'cart_id', 'partition']
    */
-  primaryKeys: string[];
+  primaryKeys?: string[];
 
   /**
-   * Extract primary key values from the event data
+   * Extract primary key values from the event data.
+   * The keys of the returned object will be used as the primary key columns for upsert operations.
    */
   extractKeys: (
     event: ProjectionEvent<E>,
@@ -78,7 +82,6 @@ export type SnapshotProjectionConfig<
  * ```typescript
  * const cartProjection = createSnapshotProjection({
  *   tableName: 'carts',
- *   primaryKeys: ['tenant_id', 'cart_id', 'partition'],
  *   extractKeys: (event, partition) => ({
  *     tenant_id: event.data.eventMeta.tenantId,
  *     cart_id: event.data.eventMeta.cartId,
@@ -103,20 +106,23 @@ export function createSnapshotProjection<
 >(
   config: SnapshotProjectionConfig<TState, TTable, E>,
 ): ProjectionHandler<DatabaseExecutor, E> {
-  const {
-    tableName,
-    primaryKeys,
-    extractKeys,
-    evolve,
-    initialState,
-    mapToColumns,
-  } = config;
+  const { tableName, extractKeys, evolve, initialState, mapToColumns } = config;
+
+  // Cache the inferred primary keys after the first call
+  let inferredPrimaryKeys: string[] | undefined;
 
   return async (
     { db, partition }: ProjectionContext<DatabaseExecutor>,
     event: ProjectionEvent<E>,
   ) => {
     const keys = extractKeys(event, partition);
+
+    // Infer primary keys from extractKeys on first call
+    if (!inferredPrimaryKeys) {
+      inferredPrimaryKeys = Object.keys(keys);
+    }
+
+    const primaryKeys = inferredPrimaryKeys;
 
     // Check if event is newer than what we've already processed
     // Note: Casting to `any` is necessary because Kysely cannot infer types for dynamic table names.
@@ -212,7 +218,6 @@ export function createSnapshotProjection<
  *   ['CartCreated', 'ItemAddedToCart', 'ItemRemovedFromCart'],
  *   {
  *     tableName: 'carts',
- *     primaryKeys: ['tenant_id', 'cart_id', 'partition'],
  *     extractKeys: (event, partition) => ({
  *       tenant_id: event.data.eventMeta.tenantId,
  *       cart_id: event.data.eventMeta.cartId,

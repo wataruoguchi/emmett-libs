@@ -234,13 +234,12 @@ describe("Projections Modules", () => {
   });
 
   describe("createSnapshotProjection", () => {
-    it("should create a snapshot projection handler", () => {
+    it("should create a snapshot projection handler with inferred primary keys", () => {
       const mockEvolve = vi.fn((_state, _event) => ({ count: 1 }));
       const mockInitialState = vi.fn(() => ({ count: 0 }));
 
       const handler = createSnapshotProjection({
         tableName: "test_table",
-        primaryKeys: ["id"],
         extractKeys: (_event, _partition) => ({ id: "test-id" }),
         evolve: mockEvolve,
         initialState: mockInitialState,
@@ -249,13 +248,12 @@ describe("Projections Modules", () => {
       expect(typeof handler).toBe("function");
     });
 
-    it("should handle projection config with multiple primary keys", () => {
+    it("should handle projection config with multiple inferred primary keys", () => {
       const mockEvolve = vi.fn((state, _event) => state);
       const mockInitialState = vi.fn(() => ({}));
 
       const handler = createSnapshotProjection({
         tableName: "test_table",
-        primaryKeys: ["tenant_id", "entity_id", "partition"],
         extractKeys: (_event, partition) => ({
           tenant_id: "tenant-1",
           entity_id: "entity-1",
@@ -278,7 +276,6 @@ describe("Projections Modules", () => {
         ["EventType1", "EventType2", "EventType3"],
         {
           tableName: "test_table",
-          primaryKeys: ["id"],
           extractKeys: (_event, _partition) => ({ id: "test-id" }),
           evolve: mockEvolve,
           initialState: mockInitialState,
@@ -301,7 +298,6 @@ describe("Projections Modules", () => {
 
       const registry = createSnapshotProjectionRegistry([], {
         tableName: "test_table",
-        primaryKeys: ["id"],
         extractKeys: (_event, _partition) => ({ id: "test-id" }),
         evolve: mockEvolve,
         initialState: mockInitialState,
@@ -318,7 +314,6 @@ describe("Projections Modules", () => {
         ["EventType1", "EventType2"],
         {
           tableName: "test_table",
-          primaryKeys: ["id"],
           extractKeys: (_event, _partition) => ({ id: "test-id" }),
           evolve: mockEvolve,
           initialState: mockInitialState,
@@ -348,7 +343,6 @@ describe("Projections Modules", () => {
 
       const registry = createSnapshotProjectionRegistry(["TestEvent"], {
         tableName: "test_table",
-        primaryKeys: ["id"],
         extractKeys: (_event, _partition) => ({ id: "test-id" }),
         evolve: mockEvolve,
         initialState: mockInitialState,
@@ -371,7 +365,6 @@ describe("Projections Modules", () => {
         ["SnapshotEvent"],
         {
           tableName: "snapshot_table",
-          primaryKeys: ["id"],
           extractKeys: (_event, _partition) => ({ id: "test-id" }),
           evolve: mockEvolve,
           initialState: mockInitialState,
@@ -415,7 +408,6 @@ describe("Projections Modules", () => {
 
       const handler = createSnapshotProjection({
         tableName: "test_table",
-        primaryKeys: ["id"],
         extractKeys: (_event, _partition) => ({ id: "test-id" }),
         evolve: mockEvolve,
         initialState: mockInitialState,
@@ -433,7 +425,6 @@ describe("Projections Modules", () => {
 
       const handler = createSnapshotProjection({
         tableName: "test_table",
-        primaryKeys: ["id"],
         extractKeys: (_event, _partition) => ({ id: "test-id" }),
         evolve: mockEvolve,
         initialState: mockInitialState,
@@ -453,7 +444,6 @@ describe("Projections Modules", () => {
 
       const registry = createSnapshotProjectionRegistry(["Event1", "Event2"], {
         tableName: "test_table",
-        primaryKeys: ["id"],
         extractKeys: (_event, _partition) => ({ id: "test-id" }),
         evolve: mockEvolve,
         initialState: mockInitialState,

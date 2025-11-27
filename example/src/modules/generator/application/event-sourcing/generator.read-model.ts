@@ -60,7 +60,6 @@ export function generatorsSnapshotProjection(): ProjectionRegistry<DatabaseExecu
     GeneratorDomainEvent
   >(["GeneratorCreated", "GeneratorUpdated", "GeneratorDeleted"], {
     tableName: "generators",
-    primaryKeys: ["tenant_id", "generator_id", "partition"],
     extractKeys: (
       event: ProjectionEvent<GeneratorDomainEvent>,
       partition: string,
