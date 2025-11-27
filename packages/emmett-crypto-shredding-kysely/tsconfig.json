@@ -15,9 +15,7 @@
     "outDir": "./dist",
     "baseUrl": ".",
     "paths": {
-      "@wataruoguchi/emmett-crypto-shredding": [
-        "../emmett-crypto-shredding/dist/index.d.ts"
-      ]
+      "@wataruoguchi/emmett-crypto-shredding": ["../emmett-crypto-shredding/dist/index.d.ts"]
     }
   },
   "exclude": ["node_modules", "database/**/*", "vitest.config.ts"]
