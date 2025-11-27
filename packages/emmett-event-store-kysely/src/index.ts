@@ -10,6 +10,7 @@ export type {
   ProjectionReadStreamOptions,
 } from "./event-store/kysely-event-store.js";
 export { createProjectionRunner } from "./projections/runner.js";
+export type { ProjectEvents } from "./projections/runner.js";
 export {
   createSnapshotProjection,
   createSnapshotProjectionRegistry,

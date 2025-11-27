@@ -69,7 +69,6 @@ export function cartsSnapshotProjection(): ProjectionRegistry<DatabaseExecutor> 
     ],
     {
       tableName: "carts",
-      primaryKeys: ["tenant_id", "cart_id", "partition"],
       extractKeys: (
         event: ProjectionEvent<CartDomainEvent>,
         partition: string,

@@ -53,7 +53,6 @@ const registry = createSnapshotProjectionRegistry(
   ["CartCreated", "ItemAdded", "CartCheckedOut"],
   {
     tableName: "carts",
-    primaryKeys: ["tenant_id", "cart_id", "partition"],
     extractKeys: (event, partition) => ({...}),
     evolve: domainEvolve,  // Same logic as write model
     initialState,

@@ -81,7 +81,6 @@ const registry = createSnapshotProjectionRegistry(
   ["CartCreated", "ItemAdded", "CartCheckedOut"],
   {
     tableName: "carts",
-    primaryKeys: ["tenant_id", "cart_id", "partition"],
     extractKeys: (event, partition) => ({
       tenant_id: event.data.eventMeta.tenantId,
       cart_id: event.data.eventMeta.cartId,

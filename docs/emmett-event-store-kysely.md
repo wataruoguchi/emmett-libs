@@ -185,7 +185,6 @@ const registry = createSnapshotProjectionRegistry(
   ["CartCreated", "ItemAdded", "CartCheckedOut"],
   {
     tableName: "carts",
-    primaryKeys: ["tenant_id", "cart_id", "partition"],
     extractKeys: (event, partition) => ({
       tenant_id: event.data.eventMeta.tenantId,
       cart_id: event.data.eventMeta.cartId,
@@ -200,6 +199,16 @@ const registry = createSnapshotProjectionRegistry(
   }
 );
 ```
+
+**Arguments:**
+
+- **First argument**: Array of event types to handle
+- **Second argument**: Configuration object
+  - `tableName`: Database table name for the projection
+  - `extractKeys`: Function that returns primary key values from the event (keys are inferred automatically)
+  - `evolve`: Your domain's evolve function (reuse from write model)
+  - `initialState`: Function that returns the initial aggregate state
+  - `mapToColumns` _(optional)_: Function to denormalize state fields into table columns for querying
 
 ### Process Events (On-Demand)
 
@@ -339,7 +348,6 @@ const registry = createSnapshotProjectionRegistry(
   ["CartCreated", "ItemAdded"],
   {
     tableName: "carts",
-    primaryKeys: ["tenant_id", "cart_id"],
     extractKeys: (event, partition) => ({ /* ... */ }),
     evolve: domainEvolve,
     initialState: () => ({ /* ... */ }),
