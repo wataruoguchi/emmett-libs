@@ -32,13 +32,15 @@ import { Kysely } from "kysely";
 // Required tables: messages, streams, subscriptions
 ```
 
-A read model table expects to have the following columns:
+**Legacy approach:** A read model table expects to have the following columns:
 
 - stream_id (uuid)
 - last_stream_position (bigint)
 - last_global_position (bigint)
 - partition (text)
 - snapshot (jsonb)
+
+**New approach (recommended):** Use `createSnapshotProjectionWithSnapshotTable` to store snapshots in a separate centralized table, keeping read model tables clean with only keys and denormalized columns.
 
 ### 2. Create Event Store
 
@@ -69,7 +71,56 @@ Please read <https://event-driven-io.github.io/emmett/getting-started.html>
 
 ### 4. Build Read Models
 
-This package supports "Snapshot Projections".
+This package supports "Snapshot Projections" with two approaches:
+
+#### Option A: Separate Snapshot Table (Recommended) ⭐
+
+Use `createSnapshotProjectionWithSnapshotTable` to store snapshots in a centralized table:
+
+```typescript
+import { 
+  createSnapshotProjectionRegistryWithSnapshotTable 
+} from "@wataruoguchi/emmett-event-store-kysely/projections";
+
+// First, create the snapshots table:
+// CREATE TABLE snapshots (
+//   readmodel_table_name TEXT NOT NULL,
+//   stream_id TEXT NOT NULL,
+//   last_stream_position BIGINT NOT NULL,
+//   last_global_position BIGINT NOT NULL,
+//   snapshot JSONB NOT NULL,
+//   PRIMARY KEY (readmodel_table_name, stream_id)
+// );
+
+// Reuse your write model's evolve function!
+const registry = createSnapshotProjectionRegistryWithSnapshotTable(
+  ["CartCreated", "ItemAdded", "CartCheckedOut"],
+  {
+    tableName: "carts",
+    extractKeys: (event, partition) => ({
+      tenant_id: event.data.eventMeta.tenantId,
+      cart_id: event.data.eventMeta.cartId,
+      partition,
+    }),
+    evolve: domainEvolve,      // Reuse from write model!
+    initialState,
+    mapToColumns: (state) => ({ // Optional: denormalize for queries
+      currency: state.currency,
+      total: state.status === "checkedOut" ? state.total : null,
+    }),
+  }
+);
+```
+
+**Benefits:**
+
+- ✅ Cleaner read model tables (no event-sourcing columns)
+- ✅ Easier to create new read models (no schema migrations for event-sourcing columns)
+- ✅ Centralized snapshot management
+
+#### Option B: Legacy Approach (Backward Compatible)
+
+Use `createSnapshotProjectionRegistry` to store everything in the read model table:
 
 ```typescript
 import { 

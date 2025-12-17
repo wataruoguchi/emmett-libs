@@ -46,13 +46,15 @@ First, set up the required PostgreSQL tables. The event store requires three tab
 
 See the [migration example](https://github.com/wataruoguchi/emmett-libs/blob/main/packages/emmett-event-store-kysely/database/migrations/1758758113676_event_sourcing_migration_example.ts) for the complete schema.
 
-A read model table should have these columns:
+**Legacy approach:** A read model table should have these columns:
 
 - `stream_id` (TEXT/VARCHAR)
 - `last_stream_position` (BIGINT)
 - `last_global_position` (BIGINT)
 - `partition` (TEXT)
 - `snapshot` (JSONB) - Your aggregate state
+
+**New approach (recommended):** Use `createSnapshotProjectionWithSnapshotTable` to store snapshots in a separate centralized `snapshots` table, keeping read model tables clean with only keys and denormalized columns.
 
 ### Create Event Store
 
@@ -173,7 +175,72 @@ const state = cart.snapshot as CartState;
 
 ### Build Read Models with Snapshot Projections
 
-This package recommends using snapshot projections, which reuse your domain's `evolve` function to ensure consistency between write and read models:
+This package recommends using snapshot projections, which reuse your domain's `evolve` function to ensure consistency between write and read models. There are two approaches:
+
+#### Option A: Separate Snapshot Table (Recommended) ⭐
+
+Use `createSnapshotProjectionRegistryWithSnapshotTable` to store snapshots in a centralized table:
+
+```typescript
+import { 
+  createSnapshotProjectionRegistryWithSnapshotTable 
+} from "@wataruoguchi/emmett-event-store-kysely/projections";
+
+// First, create the snapshots table:
+// CREATE TABLE snapshots (
+//   readmodel_table_name TEXT NOT NULL,
+//   stream_id TEXT NOT NULL,
+//   last_stream_position BIGINT NOT NULL,
+//   last_global_position BIGINT NOT NULL,
+//   snapshot JSONB NOT NULL,
+//   PRIMARY KEY (readmodel_table_name, stream_id)
+// );
+
+// Reuse your write model's evolve function!
+const registry = createSnapshotProjectionRegistryWithSnapshotTable(
+  ["CartCreated", "ItemAdded", "CartCheckedOut"],
+  {
+    tableName: "carts",
+    extractKeys: (event, partition) => ({
+      tenant_id: event.data.eventMeta.tenantId,
+      cart_id: event.data.eventMeta.cartId,
+      partition,
+    }),
+    evolve: domainEvolve,      // Same function as write model!
+    initialState: () => ({ status: "init", items: [] }),
+    mapToColumns: (state) => ({ // Optional: denormalize for queries
+      currency: state.status !== "init" ? state.currency : null,
+      total: state.status === "checkedOut" ? state.total : null,
+    }),
+  }
+);
+```
+
+**Benefits:**
+
+- ✅ Cleaner read model tables (no event-sourcing columns needed)
+- ✅ Easier to create new read models (no schema migrations for event-sourcing columns)
+- ✅ Centralized snapshot management
+
+**Read model table schema:**
+
+```sql
+CREATE TABLE carts (
+  tenant_id VARCHAR(100) NOT NULL,
+  cart_id VARCHAR(100) NOT NULL,
+  partition VARCHAR(100) NOT NULL,
+  
+  -- Optional: Denormalized columns from mapToColumns
+  currency VARCHAR(3),
+  total NUMERIC(10, 2),
+  
+  PRIMARY KEY (tenant_id, cart_id, partition)
+);
+```
+
+#### Option B: Legacy Approach (Backward Compatible)
+
+Use `createSnapshotProjectionRegistry` to store everything in the read model table:
 
 ```typescript
 import { 
@@ -200,7 +267,31 @@ const registry = createSnapshotProjectionRegistry(
 );
 ```
 
-**Arguments:**
+**Read model table schema:**
+
+```sql
+CREATE TABLE carts (
+  tenant_id VARCHAR(100) NOT NULL,
+  cart_id VARCHAR(100) NOT NULL,
+  partition VARCHAR(100) NOT NULL,
+  
+  -- Required: Complete state
+  snapshot JSONB NOT NULL,
+  
+  -- Required: Tracking
+  stream_id VARCHAR(255) NOT NULL,
+  last_stream_position BIGINT NOT NULL,
+  last_global_position BIGINT NOT NULL,
+  
+  -- Optional: Denormalized columns from mapToColumns
+  currency VARCHAR(3),
+  total NUMERIC(10, 2),
+  
+  PRIMARY KEY (tenant_id, cart_id, partition)
+);
+```
+
+**Arguments (both approaches):**
 
 - **First argument**: Array of event types to handle
 - **Second argument**: Configuration object
@@ -339,9 +430,45 @@ const result = await eventStore.aggregateStream("cart-123", {
 
 ### Snapshot Projections
 
-#### `createSnapshotProjectionRegistry(eventTypes, config)`
+#### `createSnapshotProjectionRegistryWithSnapshotTable(eventTypes, config)` ⭐ Recommended
 
-Creates a projection registry for snapshot-based read models.
+Creates a projection registry for snapshot-based read models using a separate centralized snapshots table.
+
+```typescript
+const registry = createSnapshotProjectionRegistryWithSnapshotTable(
+  ["CartCreated", "ItemAdded"],
+  {
+    tableName: "carts",
+    extractKeys: (event, partition) => ({ /* ... */ }),
+    evolve: domainEvolve,
+    initialState: () => ({ /* ... */ }),
+    mapToColumns: (state) => ({ /* ... */ }), // Optional
+  }
+);
+```
+
+**Benefits:**
+
+- Cleaner read model tables (no event-sourcing columns)
+- Easier to create new read models
+- Centralized snapshot management
+
+**Database schema required:**
+
+```sql
+CREATE TABLE snapshots (
+  readmodel_table_name TEXT NOT NULL,
+  stream_id TEXT NOT NULL,
+  last_stream_position BIGINT NOT NULL,
+  last_global_position BIGINT NOT NULL,
+  snapshot JSONB NOT NULL,
+  PRIMARY KEY (readmodel_table_name, stream_id)
+);
+```
+
+#### `createSnapshotProjectionRegistry(eventTypes, config)` (Legacy)
+
+Creates a projection registry for snapshot-based read models (legacy approach - stores everything in the read model table).
 
 ```typescript
 const registry = createSnapshotProjectionRegistry(

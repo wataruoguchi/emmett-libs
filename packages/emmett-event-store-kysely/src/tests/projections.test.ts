@@ -3,6 +3,8 @@ import { createProjectionRunner } from "../projections/runner.js";
 import {
   createSnapshotProjection,
   createSnapshotProjectionRegistry,
+  createSnapshotProjectionWithSnapshotTable,
+  createSnapshotProjectionRegistryWithSnapshotTable,
 } from "../projections/snapshot-projection.js";
 import type { ProjectionHandler, ProjectionRegistry } from "../types.js";
 import { createProjectionRegistry } from "../types.js";
@@ -449,6 +451,272 @@ describe("Projections Modules", () => {
         initialState: mockInitialState,
         mapToColumns: mockMapToColumns,
       });
+
+      expect(Object.keys(registry)).toEqual(["Event1", "Event2"]);
+      expect(registry.Event1).toHaveLength(1);
+      expect(registry.Event2).toHaveLength(1);
+    });
+  });
+
+  describe("createSnapshotProjectionWithSnapshotTable", () => {
+    it("should create a snapshot projection handler with inferred primary keys", () => {
+      const mockEvolve = vi.fn((_state, _event) => ({ count: 1 }));
+      const mockInitialState = vi.fn(() => ({ count: 0 }));
+
+      const handler = createSnapshotProjectionWithSnapshotTable({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      expect(typeof handler).toBe("function");
+    });
+
+    it("should handle projection config with multiple inferred primary keys", () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const handler = createSnapshotProjectionWithSnapshotTable({
+        tableName: "test_table",
+        extractKeys: (_event, partition) => ({
+          tenant_id: "tenant-1",
+          entity_id: "entity-1",
+          partition,
+        }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      expect(typeof handler).toBe("function");
+    });
+  });
+
+  describe("createSnapshotProjectionRegistryWithSnapshotTable", () => {
+    it("should create registry with multiple event types", () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const registry = createSnapshotProjectionRegistryWithSnapshotTable(
+        ["EventType1", "EventType2", "EventType3"],
+        {
+          tableName: "test_table",
+          extractKeys: (_event, _partition) => ({ id: "test-id" }),
+          evolve: mockEvolve,
+          initialState: mockInitialState,
+        },
+      );
+
+      expect(Object.keys(registry)).toEqual([
+        "EventType1",
+        "EventType2",
+        "EventType3",
+      ]);
+      expect(registry.EventType1).toHaveLength(1);
+      expect(registry.EventType2).toHaveLength(1);
+      expect(registry.EventType3).toHaveLength(1);
+    });
+
+    it("should create registry with empty event types array", () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const registry = createSnapshotProjectionRegistryWithSnapshotTable([], {
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      expect(Object.keys(registry)).toEqual([]);
+    });
+
+    it("should share the same handler instance across event types", () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const registry = createSnapshotProjectionRegistryWithSnapshotTable(
+        ["EventType1", "EventType2"],
+        {
+          tableName: "test_table",
+          extractKeys: (_event, _partition) => ({ id: "test-id" }),
+          evolve: mockEvolve,
+          initialState: mockInitialState,
+        },
+      );
+
+      // All event types should have the same handler instance
+      expect(registry.EventType1[0]).toBe(registry.EventType2[0]);
+    });
+  });
+
+  describe("Snapshot Projection With Snapshot Table Integration", () => {
+    it("should work with projection runner", () => {
+      const mockDb = {
+        selectFrom: vi.fn(),
+        insertInto: vi.fn(),
+        updateTable: vi.fn(),
+        transaction: vi.fn(),
+      } as never;
+
+      const mockReadStream = vi.fn();
+      const mockEvolve = vi.fn((state, _event) => ({
+        ...state,
+        processed: true,
+      }));
+      const mockInitialState = vi.fn(() => ({ processed: false }));
+
+      const registry = createSnapshotProjectionRegistryWithSnapshotTable(
+        ["TestEvent"],
+        {
+          tableName: "test_table",
+          extractKeys: (_event, _partition) => ({ id: "test-id" }),
+          evolve: mockEvolve,
+          initialState: mockInitialState,
+        },
+      );
+
+      const runner = createProjectionRunner({
+        db: mockDb,
+        readStream: mockReadStream,
+        registry,
+      });
+
+      expect(typeof runner.projectEvents).toBe("function");
+    });
+
+    it("should combine snapshot table registries with regular registries", () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const snapshotTableRegistry =
+        createSnapshotProjectionRegistryWithSnapshotTable(
+          ["SnapshotTableEvent"],
+          {
+            tableName: "snapshot_table",
+            extractKeys: (_event, _partition) => ({ id: "test-id" }),
+            evolve: mockEvolve,
+            initialState: mockInitialState,
+          },
+        );
+
+      const regularHandler: ProjectionHandler = vi.fn();
+      const regularRegistry: ProjectionRegistry = {
+        RegularEvent: [regularHandler],
+      };
+
+      const combined = createProjectionRegistry(
+        snapshotTableRegistry,
+        regularRegistry,
+      );
+
+      expect(Object.keys(combined)).toContain("SnapshotTableEvent");
+      expect(Object.keys(combined)).toContain("RegularEvent");
+      expect(combined.SnapshotTableEvent).toHaveLength(1);
+      expect(combined.RegularEvent).toHaveLength(1);
+    });
+
+    it("should combine snapshot table registries with legacy snapshot registries", () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const snapshotTableRegistry =
+        createSnapshotProjectionRegistryWithSnapshotTable(
+          ["SnapshotTableEvent"],
+          {
+            tableName: "snapshot_table",
+            extractKeys: (_event, _partition) => ({ id: "test-id" }),
+            evolve: mockEvolve,
+            initialState: mockInitialState,
+          },
+        );
+
+      const legacySnapshotRegistry = createSnapshotProjectionRegistry(
+        ["LegacySnapshotEvent"],
+        {
+          tableName: "legacy_table",
+          extractKeys: (_event, _partition) => ({ id: "test-id" }),
+          evolve: mockEvolve,
+          initialState: mockInitialState,
+        },
+      );
+
+      const combined = createProjectionRegistry(
+        snapshotTableRegistry,
+        legacySnapshotRegistry,
+      );
+
+      expect(Object.keys(combined)).toContain("SnapshotTableEvent");
+      expect(Object.keys(combined)).toContain("LegacySnapshotEvent");
+      expect(combined.SnapshotTableEvent).toHaveLength(1);
+      expect(combined.LegacySnapshotEvent).toHaveLength(1);
+    });
+  });
+
+  describe("mapToColumns feature with snapshot table", () => {
+    it("should support optional mapToColumns for denormalization", () => {
+      const mockEvolve = vi.fn((_state, _event) => ({
+        status: "active",
+        items: [{ sku: "SKU-1", quantity: 1 }],
+        total: 100,
+      }));
+      const mockInitialState = vi.fn(() => ({
+        status: "init",
+        items: [],
+        total: 0,
+      }));
+      const mockMapToColumns = vi.fn((state: any) => ({
+        status_text: state.status,
+        items_count: state.items.length,
+        total_amount: state.total,
+      }));
+
+      const handler = createSnapshotProjectionWithSnapshotTable({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+        mapToColumns: mockMapToColumns,
+      });
+
+      expect(typeof handler).toBe("function");
+      // The handler should be callable
+      expect(handler).toBeDefined();
+    });
+
+    it("should work without mapToColumns (backward compatibility)", () => {
+      const mockEvolve = vi.fn((_state, _event) => ({ count: 1 }));
+      const mockInitialState = vi.fn(() => ({ count: 0 }));
+
+      const handler = createSnapshotProjectionWithSnapshotTable({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+        // No mapToColumns - should still work
+      });
+
+      expect(typeof handler).toBe("function");
+    });
+
+    it("should create registry with mapToColumns", () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+      const mockMapToColumns = vi.fn((state: any) => ({
+        field1: state.value1,
+        field2: state.value2,
+      }));
+
+      const registry = createSnapshotProjectionRegistryWithSnapshotTable(
+        ["Event1", "Event2"],
+        {
+          tableName: "test_table",
+          extractKeys: (_event, _partition) => ({ id: "test-id" }),
+          evolve: mockEvolve,
+          initialState: mockInitialState,
+          mapToColumns: mockMapToColumns,
+        },
+      );
 
       expect(Object.keys(registry)).toEqual(["Event1", "Event2"]);
       expect(registry.Event1).toHaveLength(1);

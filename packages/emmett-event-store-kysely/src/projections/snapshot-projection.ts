@@ -70,6 +70,18 @@ export type SnapshotProjectionConfig<
 };
 
 /**
+ * Constructs a deterministic stream_id from the keys.
+ * The stream_id is created by sorting the keys and concatenating them with a delimiter.
+ * This ensures the same keys always produce the same stream_id.
+ */
+function constructStreamId(keys: Record<string, string>): string {
+  const sortedEntries = Object.entries(keys).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  return sortedEntries.map(([key, value]) => `${key}:${value}`).join("|");
+}
+
+/**
  * Creates a projection handler that stores the aggregate state as a snapshot.
  *
  * This is a generic helper that works with any aggregate that follows the evolve pattern.
@@ -209,6 +221,184 @@ export function createSnapshotProjection<
 }
 
 /**
+ * Creates a projection handler that stores snapshots in a separate centralized table.
+ *
+ * This is similar to `createSnapshotProjection`, but uses a separate `snapshots` table
+ * to store event-sourcing-related columns. This approach makes read model tables cleaner
+ * and more scalable, as they don't need to include event-sourcing columns.
+ *
+ * **Key differences from `createSnapshotProjection`:**
+ * - Snapshots are stored in a centralized `snapshots` table
+ * - Read model tables only contain keys from `extractKeys` and columns from `mapToColumns`
+ * - The `stream_id` is deterministically constructed from the keys (not from event metadata)
+ *
+ * **Database schema required:**
+ * ```sql
+ * CREATE TABLE snapshots (
+ *   readmodel_table_name TEXT NOT NULL,
+ *   stream_id TEXT NOT NULL,
+ *   last_stream_position BIGINT NOT NULL,
+ *   last_global_position BIGINT NOT NULL,
+ *   snapshot JSONB NOT NULL,
+ *   PRIMARY KEY (readmodel_table_name, stream_id)
+ * );
+ * ```
+ *
+ * @example
+ * ```typescript
+ * const cartProjection = createSnapshotProjectionWithSnapshotTable({
+ *   tableName: 'carts',
+ *   extractKeys: (event, partition) => ({
+ *     tenant_id: event.data.eventMeta.tenantId,
+ *     cart_id: event.data.eventMeta.cartId,
+ *     partition
+ *   }),
+ *   evolve: cartEvolve,
+ *   initialState: () => ({ status: 'init', items: [] }),
+ *   mapToColumns: (state) => ({
+ *     currency: state.currency,
+ *     is_checked_out: state.status === 'checkedOut'
+ *   })
+ * });
+ *
+ * // Use it in a projection registry
+ * const registry: ProjectionRegistry = {
+ *   CartCreated: [cartProjection],
+ *   ItemAddedToCart: [cartProjection],
+ *   // ... other events
+ * };
+ * ```
+ */
+export function createSnapshotProjectionWithSnapshotTable<
+  TState,
+  TTable extends string,
+  E extends { type: string; data: unknown } = { type: string; data: unknown },
+>(
+  config: SnapshotProjectionConfig<TState, TTable, E>,
+): ProjectionHandler<DatabaseExecutor, E> {
+  const { tableName, extractKeys, evolve, initialState, mapToColumns } = config;
+
+  // Cache the inferred primary keys after the first call
+  let inferredPrimaryKeys: string[] | undefined;
+
+  return async (
+    { db, partition }: ProjectionContext<DatabaseExecutor>,
+    event: ProjectionEvent<E>,
+  ) => {
+    const keys = extractKeys(event, partition);
+
+    // Infer primary keys from extractKeys on first call
+    if (!inferredPrimaryKeys) {
+      inferredPrimaryKeys = Object.keys(keys);
+    }
+
+    const primaryKeys = inferredPrimaryKeys;
+
+    // Construct deterministic stream_id from keys
+    const streamId = constructStreamId(keys);
+
+    // Check if event is newer than what we've already processed
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const existing = await (db as any)
+      .selectFrom("snapshots")
+      .select(["last_stream_position", "snapshot"])
+      .where("readmodel_table_name", "=", tableName)
+      .where("stream_id", "=", streamId)
+      .executeTakeFirst();
+
+    const lastPos = existing?.last_stream_position
+      ? BigInt(String(existing.last_stream_position))
+      : -1n;
+
+    // Skip if we've already processed a newer event
+    if (event.metadata.streamPosition <= lastPos) {
+      return;
+    }
+
+    // Load current state from snapshot or use initial state
+    const currentState: TState = existing?.snapshot
+      ? (existing.snapshot as unknown as TState)
+      : initialState();
+
+    // Apply the event to get new state
+    const newState = evolve(currentState, event);
+
+    // Upsert the snapshot in the snapshots table
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db as any)
+      .insertInto("snapshots")
+      .values({
+        readmodel_table_name: tableName,
+        stream_id: streamId,
+        snapshot: JSON.stringify(newState),
+        last_stream_position: event.metadata.streamPosition.toString(),
+        last_global_position: event.metadata.globalPosition.toString(),
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .onConflict((oc: OnConflictBuilder<DatabaseExecutor, any>) => {
+        return oc.columns(["readmodel_table_name", "stream_id"]).doUpdateSet({
+          snapshot: (eb: ExpressionBuilder<DatabaseExecutor, any>) =>
+            eb.ref("excluded.snapshot"),
+          last_stream_position: (
+            eb: ExpressionBuilder<DatabaseExecutor, any>,
+          ) => eb.ref("excluded.last_stream_position"),
+          last_global_position: (
+            eb: ExpressionBuilder<DatabaseExecutor, any>,
+          ) => eb.ref("excluded.last_global_position"),
+        });
+      })
+      .execute();
+
+    // Upsert the read model table with keys and denormalized columns only
+    const readModelData: Record<string, unknown> = { ...keys };
+
+    if (mapToColumns) {
+      const columns = mapToColumns(newState);
+      Object.assign(readModelData, columns);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const readModelInsertQuery = (db as any)
+      .insertInto(tableName)
+      .values(readModelData);
+
+    // Build the update set for conflict resolution (only for denormalized columns)
+    type UpdateValue = (
+      eb: ExpressionBuilder<DatabaseExecutor, any>,
+    ) => unknown;
+    const readModelUpdateSet: Record<string, UpdateValue> = {};
+
+    if (mapToColumns) {
+      const columns = mapToColumns(newState);
+      for (const columnName of Object.keys(columns)) {
+        readModelUpdateSet[columnName] = (
+          eb: ExpressionBuilder<DatabaseExecutor, any>,
+        ) => eb.ref(`excluded.${columnName}`);
+      }
+    }
+
+    // Only update if there are denormalized columns, otherwise just insert (no-op on conflict)
+    if (Object.keys(readModelUpdateSet).length > 0) {
+      await readModelInsertQuery
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .onConflict((oc: OnConflictBuilder<DatabaseExecutor, any>) => {
+          const conflictBuilder = oc.columns(primaryKeys);
+          return conflictBuilder.doUpdateSet(readModelUpdateSet);
+        })
+        .execute();
+    } else {
+      // If no denormalized columns, use insert with on conflict do nothing
+      await readModelInsertQuery
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .onConflict((oc: OnConflictBuilder<DatabaseExecutor, any>) => {
+          return oc.columns(primaryKeys).doNothing();
+        })
+        .execute();
+    }
+  };
+}
+
+/**
  * Creates multiple projection handlers that all use the same snapshot projection logic.
  * This is a convenience function to avoid repeating the same handler for multiple event types.
  *
@@ -238,6 +428,53 @@ export function createSnapshotProjectionRegistry<
   config: SnapshotProjectionConfig<TState, TTable, E>,
 ): ProjectionRegistry {
   const handler = createSnapshotProjection(config);
+  const registry: ProjectionRegistry = {};
+
+  for (const eventType of eventTypes) {
+    // Type cast is safe here because ProjectionHandler is contravariant in its event type parameter.
+    // A handler for a specific event type E can safely handle any event that matches E's structure.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registry[eventType] = [handler as any];
+  }
+
+  return registry;
+}
+
+/**
+ * Creates multiple projection handlers that all use the same snapshot projection logic
+ * with a separate snapshots table. This is a convenience function to avoid repeating
+ * the same handler for multiple event types.
+ *
+ * @example
+ * ```typescript
+ * const registry = createSnapshotProjectionRegistryWithSnapshotTable(
+ *   ['CartCreated', 'ItemAddedToCart', 'ItemRemovedFromCart'],
+ *   {
+ *     tableName: 'carts',
+ *     extractKeys: (event, partition) => ({
+ *       tenant_id: event.data.eventMeta.tenantId,
+ *       cart_id: event.data.eventMeta.cartId,
+ *       partition
+ *     }),
+ *     evolve: cartEvolve,
+ *     initialState: () => ({ status: 'init', items: [] }),
+ *     mapToColumns: (state) => ({
+ *       currency: state.currency,
+ *       is_checked_out: state.status === 'checkedOut'
+ *     })
+ *   }
+ * );
+ * ```
+ */
+export function createSnapshotProjectionRegistryWithSnapshotTable<
+  TState,
+  TTable extends string,
+  E extends { type: string; data: unknown } = { type: string; data: unknown },
+>(
+  eventTypes: E["type"][],
+  config: SnapshotProjectionConfig<TState, TTable, E>,
+): ProjectionRegistry {
+  const handler = createSnapshotProjectionWithSnapshotTable(config);
   const registry: ProjectionRegistry = {};
 
   for (const eventType of eventTypes) {
