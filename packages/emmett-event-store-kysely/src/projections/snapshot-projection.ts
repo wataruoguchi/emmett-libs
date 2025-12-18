@@ -330,7 +330,9 @@ export function createSnapshotProjectionWithSnapshotTable<
 
     // Load current state from snapshot or use initial state
     const currentState: TState = existing?.snapshot
-      ? (existing.snapshot as unknown as TState)
+      ? (typeof existing.snapshot === "string"
+          ? (JSON.parse(existing.snapshot) as TState)
+          : (existing.snapshot as unknown as TState))
       : initialState();
 
     // Apply the event to get new state
