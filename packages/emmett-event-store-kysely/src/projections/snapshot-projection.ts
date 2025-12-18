@@ -78,7 +78,13 @@ function constructStreamId(keys: Record<string, string>): string {
   const sortedEntries = Object.entries(keys).sort(([a], [b]) =>
     a.localeCompare(b),
   );
-  return sortedEntries.map(([key, value]) => `${key}:${value}`).join("|");
+  return sortedEntries
+    .map(([key, value]) => {
+      const encodedKey = encodeURIComponent(key);
+      const encodedValue = encodeURIComponent(value);
+      return `${encodedKey}:${encodedValue}`;
+    })
+    .join("|");
 }
 
 /**
