@@ -78,9 +78,11 @@ export type SnapshotProjectionConfig<
  * that could otherwise cause collisions or parsing issues when used as delimiters.
  */
 function constructStreamId(keys: Record<string, string>): string {
-  const sortedEntries = Object.entries(keys).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
+  const sortedEntries = Object.entries(keys).sort(([a], [b]) => {
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+  });
   return sortedEntries
     .map(([key, value]) => {
       const encodedKey = encodeURIComponent(key);
