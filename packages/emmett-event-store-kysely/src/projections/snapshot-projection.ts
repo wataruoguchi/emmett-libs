@@ -298,9 +298,26 @@ export function createSnapshotProjectionWithSnapshotTable<
   ) => {
     const keys = extractKeys(event, partition);
 
-    // Infer primary keys from extractKeys on first call
+    const currentKeys = Object.keys(keys);
+    const sortedCurrentKeys = [...currentKeys].sort();
+
+    // Infer and validate primary keys from extractKeys
     if (!inferredPrimaryKeys) {
-      inferredPrimaryKeys = Object.keys(keys);
+      // Cache the initially inferred primary keys in a deterministic order
+      inferredPrimaryKeys = sortedCurrentKeys;
+    } else {
+      // Validate that subsequent calls to extractKeys return the same key set
+      if (
+        inferredPrimaryKeys.length !== sortedCurrentKeys.length ||
+        !inferredPrimaryKeys.every((key, index) => key === sortedCurrentKeys[index])
+      ) {
+        throw new Error(
+          `Snapshot projection "${tableName}" received inconsistent primary keys from extractKeys. ` +
+            `Expected keys: ${inferredPrimaryKeys.join(", ")}, ` +
+            `but received: ${sortedCurrentKeys.join(", ")}. ` +
+            `Ensure extractKeys returns a consistent set of keys for all events.`,
+        );
+      }
     }
 
     const primaryKeys = inferredPrimaryKeys;
