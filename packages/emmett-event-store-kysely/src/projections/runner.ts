@@ -40,10 +40,11 @@ export function createProjectionRunner({
   };
 
   async function getOrCreateCheckpoint(
+    executor: Kysely<any> | any,
     subscriptionId: string,
     partition: string,
   ): Promise<SubscriptionCheckpoint> {
-    const existing = await db
+    const existing = await executor
       .selectFrom("subscriptions")
       .select([
         "subscription_id as subscriptionId",
@@ -68,7 +69,7 @@ export function createProjectionRunner({
       };
     }
 
-    await db
+    await executor
       .insertInto("subscriptions")
       .values({
         subscription_id: subscriptionId,
@@ -93,11 +94,12 @@ export function createProjectionRunner({
   }
 
   async function updateCheckpoint(
+    executor: Kysely<any> | any,
     subscriptionId: string,
     partition: string,
     lastProcessedPosition: bigint,
   ) {
-    await db
+    await executor
       .updateTable("subscriptions")
       .set({ last_processed_position: lastProcessedPosition })
       .where("subscription_id", "=", subscriptionId)
@@ -113,28 +115,37 @@ export function createProjectionRunner({
     const partition = opts?.partition ?? "default_partition";
     const batchSize = BigInt(opts?.batchSize ?? 500);
 
-    const checkpoint = await getOrCreateCheckpoint(subscriptionId, partition);
-
-    const { events, currentStreamVersion } =
-      await readStream<EventWithMetadata>(streamId, {
-        from: checkpoint.lastProcessedPosition + 1n,
-        to: checkpoint.lastProcessedPosition + batchSize,
+    // Wrap the entire operation in a transaction to ensure atomicity
+    return await db.transaction().execute(async (trx: Kysely<any> | any) => {
+      const checkpoint = await getOrCreateCheckpoint(
+        trx,
+        subscriptionId,
         partition,
-      });
+      );
 
-    for (const ev of events) {
-      if (!ev) continue;
-      const handlers = registry[ev.type] ?? [];
-      if (handlers.length === 0) {
-        await updateCheckpoint(
-          subscriptionId,
+      const { events, currentStreamVersion } =
+        await readStream<EventWithMetadata>(streamId, {
+          from: checkpoint.lastProcessedPosition + 1n,
+          to: checkpoint.lastProcessedPosition + batchSize,
           partition,
-          ev.metadata.streamPosition,
-        );
-        continue;
-      }
-      const projectionEvent: ProjectionEvent<{ type: string; data: unknown }> =
-        {
+        });
+
+      for (const ev of events) {
+        if (!ev) continue;
+        const handlers = registry[ev.type] ?? [];
+        if (handlers.length === 0) {
+          await updateCheckpoint(
+            trx,
+            subscriptionId,
+            partition,
+            ev.metadata.streamPosition,
+          );
+          continue;
+        }
+        const projectionEvent: ProjectionEvent<{
+          type: string;
+          data: unknown;
+        }> = {
           type: ev.type,
           data: ev.data,
           metadata: {
@@ -143,17 +154,19 @@ export function createProjectionRunner({
             globalPosition: ev.metadata.globalPosition,
           },
         };
-      for (const handler of handlers) {
-        await handler({ db, partition }, projectionEvent);
+        for (const handler of handlers) {
+          await handler({ db: trx, partition }, projectionEvent);
+        }
+        await updateCheckpoint(
+          trx,
+          subscriptionId,
+          partition,
+          projectionEvent.metadata.streamPosition,
+        );
       }
-      await updateCheckpoint(
-        subscriptionId,
-        partition,
-        projectionEvent.metadata.streamPosition,
-      );
-    }
 
-    return { processed: events.length, currentStreamVersion };
+      return { processed: events.length, currentStreamVersion };
+    });
   }
 
   return { projectEvents };

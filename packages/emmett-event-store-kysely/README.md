@@ -80,7 +80,7 @@ Use `createSnapshotProjectionWithSnapshotTable` to store snapshots in a centrali
 ```typescript
 import { 
   createSnapshotProjectionRegistryWithSnapshotTable 
-} from "@wataruoguchi/emmett-event-store-kysely/projections";
+} from "@wataruoguchi/emmett-event-store-kysely";
 
 // First, create the snapshots table:
 // CREATE TABLE snapshots (
@@ -125,7 +125,7 @@ Use `createSnapshotProjectionRegistry` to store everything in the read model tab
 ```typescript
 import { 
   createSnapshotProjectionRegistry 
-} from "@wataruoguchi/emmett-event-store-kysely/projections";
+} from "@wataruoguchi/emmett-event-store-kysely";
 
 // Reuse your write model's evolve function!
 const registry = createSnapshotProjectionRegistry(
@@ -150,7 +150,7 @@ const registry = createSnapshotProjectionRegistry(
 ### 5. Process Events and Update Read Model
 
 ```typescript
-import { createProjectionRunner } from "@wataruoguchi/emmett-event-store-kysely/projections";
+import { createProjectionRunner } from "@wataruoguchi/emmett-event-store-kysely";
 
 const runner = createProjectionRunner({ 
   db, 

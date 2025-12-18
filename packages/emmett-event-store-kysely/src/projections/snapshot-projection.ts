@@ -137,6 +137,7 @@ export function createSnapshotProjection<
     const primaryKeys = inferredPrimaryKeys;
 
     // Check if event is newer than what we've already processed
+    // Use FOR UPDATE to lock the row and prevent race conditions with concurrent transactions
     // Note: Casting to `any` is necessary because Kysely cannot infer types for dynamic table names.
     // The table name is provided at runtime, so TypeScript cannot verify the table structure at compile time.
     // This is a known limitation when working with dynamic table names in Kysely.
@@ -151,6 +152,7 @@ export function createSnapshotProjection<
         );
         return eb.and(conditions);
       })
+      .forUpdate()
       .executeTakeFirst();
 
     const lastPos = existing?.last_stream_position
@@ -211,9 +213,12 @@ export function createSnapshotProjection<
     await insertQuery
       // Note: `any` is used here because the conflict builder needs to work with any table schema.
       // The actual schema is validated at runtime through Kysely's query builder.
+      // The FOR UPDATE lock above ensures that concurrent transactions wait, preventing race conditions.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .onConflict((oc: OnConflictBuilder<DatabaseExecutor, any>) => {
         const conflictBuilder = oc.columns(primaryKeys);
+        // Note: We could add a WHERE clause here to only update if excluded.last_stream_position > table.last_stream_position,
+        // but Kysely's API doesn't easily support this. The FOR UPDATE lock above provides the primary protection.
         return conflictBuilder.doUpdateSet(updateSet);
       })
       .execute();
@@ -298,12 +303,14 @@ export function createSnapshotProjectionWithSnapshotTable<
     const streamId = constructStreamId(keys);
 
     // Check if event is newer than what we've already processed
+    // Use FOR UPDATE to lock the row and prevent race conditions with concurrent transactions
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const existing = await (db as any)
       .selectFrom("snapshots")
       .select(["last_stream_position", "snapshot"])
       .where("readmodel_table_name", "=", tableName)
       .where("stream_id", "=", streamId)
+      .forUpdate()
       .executeTakeFirst();
 
     const lastPos = existing?.last_stream_position
@@ -336,6 +343,9 @@ export function createSnapshotProjectionWithSnapshotTable<
       })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .onConflict((oc: OnConflictBuilder<DatabaseExecutor, any>) => {
+        // The FOR UPDATE lock above ensures that concurrent transactions wait, preventing race conditions.
+        // Note: We could add a WHERE clause here to only update if excluded.last_stream_position > snapshots.last_stream_position,
+        // but Kysely's API doesn't easily support this. The FOR UPDATE lock provides the primary protection.
         return oc.columns(["readmodel_table_name", "stream_id"]).doUpdateSet({
           snapshot: (eb: ExpressionBuilder<DatabaseExecutor, any>) =>
             eb.ref("excluded.snapshot"),
