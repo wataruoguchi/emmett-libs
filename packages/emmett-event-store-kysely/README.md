@@ -118,6 +118,7 @@ const registry = createSnapshotProjectionRegistryWithSnapshotTable(
 - ✅ Easier to create new read models (no schema migrations for event-sourcing columns)
 - ✅ Centralized snapshot management
 - ✅ Race condition protection with `FOR UPDATE` locking
+- ✅ Operations wrapped in transactions for stronger race condition protection
 - ✅ Automatic idempotency (skips already-processed events)
 - ✅ Primary key validation (ensures consistent `extractKeys`)
 
