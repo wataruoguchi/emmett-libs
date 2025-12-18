@@ -446,7 +446,8 @@ export function createSnapshotProjectionWithSnapshotTable<
       .onConflict((oc: OnConflictBuilder<DatabaseExecutor, any>) => {
         // The FOR UPDATE lock above ensures that concurrent transactions wait, preventing race conditions.
         // Note: We could add a WHERE clause here to only update if excluded.last_stream_position > snapshots.last_stream_position,
-        // but Kysely's API doesn't easily support this. The FOR UPDATE lock provides the primary protection.
+        // but Kysely's API doesn't easily support this, and it would be redundant for correctness because the FOR UPDATE lock,
+        // combined with the shouldSkipEvent check, already prevents stale or out-of-order events from overwriting newer snapshots.
         return oc.columns(["readmodel_table_name", "stream_id"]).doUpdateSet({
           snapshot: (eb: ExpressionBuilder<DatabaseExecutor, any>) =>
             eb.ref("excluded.snapshot"),
