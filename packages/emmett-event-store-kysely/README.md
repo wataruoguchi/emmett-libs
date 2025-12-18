@@ -117,10 +117,17 @@ const registry = createSnapshotProjectionRegistryWithSnapshotTable(
 - ✅ Cleaner read model tables (no event-sourcing columns)
 - ✅ Easier to create new read models (no schema migrations for event-sourcing columns)
 - ✅ Centralized snapshot management
+- ✅ Race condition protection with `FOR UPDATE` locking
+- ✅ Automatic idempotency (skips already-processed events)
+- ✅ Primary key validation (ensures consistent `extractKeys`)
+
+**Important:** The `extractKeys` function must return the same set of keys for all events. The projection validates this at runtime.
 
 #### Option B: Legacy Approach (Backward Compatible)
 
 Use `createSnapshotProjectionRegistry` to store everything in the read model table:
+
+**Note:** This approach stores event-sourcing columns (`stream_id`, `last_stream_position`, etc.) directly in the read model table. Consider using Option A for new projects.
 
 ```typescript
 import { 

@@ -73,6 +73,9 @@ export type SnapshotProjectionConfig<
  * Constructs a deterministic stream_id from the keys.
  * The stream_id is created by sorting the keys and concatenating them with a delimiter.
  * This ensures the same keys always produce the same stream_id.
+ *
+ * URL encoding is used to handle special characters (like `|` and `:`) in key names or values
+ * that could otherwise cause collisions or parsing issues when used as delimiters.
  */
 function constructStreamId(keys: Record<string, string>): string {
   const sortedEntries = Object.entries(keys).sort(([a], [b]) =>
@@ -85,6 +88,94 @@ function constructStreamId(keys: Record<string, string>): string {
       return `${encodedKey}:${encodedValue}`;
     })
     .join("|");
+}
+
+/**
+ * Validates and caches primary keys from extractKeys.
+ * Ensures that extractKeys returns a consistent set of keys across all events.
+ */
+function validateAndCachePrimaryKeys(
+  keys: Record<string, string>,
+  tableName: string,
+  cachedKeys: string[] | undefined,
+): string[] {
+  const currentKeys = Object.keys(keys);
+  const sortedCurrentKeys = [...currentKeys].sort();
+
+  if (!cachedKeys) {
+    // Cache the initially inferred primary keys in a deterministic order
+    return sortedCurrentKeys;
+  }
+
+  // Validate that subsequent calls to extractKeys return the same key set
+  if (
+    cachedKeys.length !== sortedCurrentKeys.length ||
+    !cachedKeys.every((key, index) => key === sortedCurrentKeys[index])
+  ) {
+    throw new Error(
+      `Snapshot projection "${tableName}" received inconsistent primary keys from extractKeys. ` +
+        `Expected keys: ${cachedKeys.join(", ")}, ` +
+        `but received: ${sortedCurrentKeys.join(", ")}. ` +
+        `Ensure extractKeys returns a consistent set of keys for all events.`,
+    );
+  }
+
+  return cachedKeys;
+}
+
+/**
+ * Checks if the event should be processed based on the last processed position.
+ * Returns true if the event should be skipped (already processed or older).
+ * Uses -1n as the default to indicate no previous position (process from beginning).
+ */
+function shouldSkipEvent(
+  eventPosition: bigint,
+  lastProcessedPosition: bigint,
+): boolean {
+  return eventPosition <= lastProcessedPosition;
+}
+
+/**
+ * Loads the current state from a snapshot, handling both string and parsed JSON formats.
+ * Falls back to initial state if no snapshot exists.
+ */
+function loadStateFromSnapshot<TState>(
+  snapshot: unknown,
+  initialState: () => TState,
+): TState {
+  if (!snapshot) {
+    return initialState();
+  }
+
+  // Some database drivers return JSONB as strings, others as parsed objects
+  if (typeof snapshot === "string") {
+    return JSON.parse(snapshot) as TState;
+  }
+
+  return snapshot as unknown as TState;
+}
+
+/**
+ * Builds the update set for denormalized columns from mapToColumns.
+ * Returns an empty object if mapToColumns is not provided.
+ */
+function buildDenormalizedUpdateSet<TState>(
+  newState: TState,
+  mapToColumns?: (state: TState) => Record<string, unknown>,
+): Record<string, (eb: ExpressionBuilder<DatabaseExecutor, any>) => unknown> {
+  const updateSet: Record<
+    string,
+    (eb: ExpressionBuilder<DatabaseExecutor, any>) => unknown
+  > = {};
+
+  if (mapToColumns) {
+    const columns = mapToColumns(newState);
+    for (const columnName of Object.keys(columns)) {
+      updateSet[columnName] = (eb) => eb.ref(`excluded.${columnName}`);
+    }
+  }
+
+  return updateSet;
 }
 
 /**
@@ -135,11 +226,12 @@ export function createSnapshotProjection<
   ) => {
     const keys = extractKeys(event, partition);
 
-    // Infer primary keys from extractKeys on first call
-    if (!inferredPrimaryKeys) {
-      inferredPrimaryKeys = Object.keys(keys);
-    }
-
+    // Validate and cache primary keys
+    inferredPrimaryKeys = validateAndCachePrimaryKeys(
+      keys,
+      tableName,
+      inferredPrimaryKeys,
+    );
     const primaryKeys = inferredPrimaryKeys;
 
     // Check if event is newer than what we've already processed
@@ -166,15 +258,15 @@ export function createSnapshotProjection<
       : -1n;
 
     // Skip if we've already processed a newer event
-    if (event.metadata.streamPosition <= lastPos) {
+    if (shouldSkipEvent(event.metadata.streamPosition, lastPos)) {
       return;
     }
 
     // Load current state from snapshot or use initial state
-    // Note: snapshot is stored as JSONB and Kysely returns it as parsed JSON
-    const currentState: TState = existing?.snapshot
-      ? (existing.snapshot as unknown as TState)
-      : initialState();
+    const currentState: TState = loadStateFromSnapshot(
+      existing?.snapshot,
+      initialState,
+    );
 
     // Apply the event to get new state
     const newState = evolve(currentState, event);
@@ -208,13 +300,12 @@ export function createSnapshotProjection<
       last_global_position: (eb) => eb.ref("excluded.last_global_position"),
     };
 
-    // If mapToColumns is provided, also update the denormalized columns
-    if (mapToColumns) {
-      const columns = mapToColumns(newState);
-      for (const columnName of Object.keys(columns)) {
-        updateSet[columnName] = (eb) => eb.ref(`excluded.${columnName}`);
-      }
-    }
+    // Add denormalized columns to update set if provided
+    const denormalizedUpdateSet = buildDenormalizedUpdateSet(
+      newState,
+      mapToColumns,
+    );
+    Object.assign(updateSet, denormalizedUpdateSet);
 
     await insertQuery
       // Note: `any` is used here because the conflict builder needs to work with any table schema.
@@ -298,28 +389,12 @@ export function createSnapshotProjectionWithSnapshotTable<
   ) => {
     const keys = extractKeys(event, partition);
 
-    const currentKeys = Object.keys(keys);
-    const sortedCurrentKeys = [...currentKeys].sort();
-
-    // Infer and validate primary keys from extractKeys
-    if (!inferredPrimaryKeys) {
-      // Cache the initially inferred primary keys in a deterministic order
-      inferredPrimaryKeys = sortedCurrentKeys;
-    } else {
-      // Validate that subsequent calls to extractKeys return the same key set
-      if (
-        inferredPrimaryKeys.length !== sortedCurrentKeys.length ||
-        !inferredPrimaryKeys.every((key, index) => key === sortedCurrentKeys[index])
-      ) {
-        throw new Error(
-          `Snapshot projection "${tableName}" received inconsistent primary keys from extractKeys. ` +
-            `Expected keys: ${inferredPrimaryKeys.join(", ")}, ` +
-            `but received: ${sortedCurrentKeys.join(", ")}. ` +
-            `Ensure extractKeys returns a consistent set of keys for all events.`,
-        );
-      }
-    }
-
+    // Validate and cache primary keys
+    inferredPrimaryKeys = validateAndCachePrimaryKeys(
+      keys,
+      tableName,
+      inferredPrimaryKeys,
+    );
     const primaryKeys = inferredPrimaryKeys;
 
     // Construct deterministic stream_id from keys
@@ -341,16 +416,15 @@ export function createSnapshotProjectionWithSnapshotTable<
       : -1n;
 
     // Skip if we've already processed a newer event
-    if (event.metadata.streamPosition <= lastPos) {
+    if (shouldSkipEvent(event.metadata.streamPosition, lastPos)) {
       return;
     }
 
     // Load current state from snapshot or use initial state
-    const currentState: TState = existing?.snapshot
-      ? (typeof existing.snapshot === "string"
-          ? (JSON.parse(existing.snapshot) as TState)
-          : (existing.snapshot as unknown as TState))
-      : initialState();
+    const currentState: TState = loadStateFromSnapshot(
+      existing?.snapshot,
+      initialState,
+    );
 
     // Apply the event to get new state
     const newState = evolve(currentState, event);
@@ -398,19 +472,10 @@ export function createSnapshotProjectionWithSnapshotTable<
       .values(readModelData);
 
     // Build the update set for conflict resolution (only for denormalized columns)
-    type UpdateValue = (
-      eb: ExpressionBuilder<DatabaseExecutor, any>,
-    ) => unknown;
-    const readModelUpdateSet: Record<string, UpdateValue> = {};
-
-    if (mapToColumns) {
-      const columns = mapToColumns(newState);
-      for (const columnName of Object.keys(columns)) {
-        readModelUpdateSet[columnName] = (
-          eb: ExpressionBuilder<DatabaseExecutor, any>,
-        ) => eb.ref(`excluded.${columnName}`);
-      }
-    }
+    const readModelUpdateSet = buildDenormalizedUpdateSet(
+      newState,
+      mapToColumns,
+    );
 
     // Only update if there are denormalized columns, otherwise just insert (no-op on conflict)
     if (Object.keys(readModelUpdateSet).length > 0) {

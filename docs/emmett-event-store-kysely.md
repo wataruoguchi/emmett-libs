@@ -452,6 +452,7 @@ const registry = createSnapshotProjectionRegistryWithSnapshotTable(
 - Cleaner read model tables (no event-sourcing columns)
 - Easier to create new read models
 - Centralized snapshot management
+- Deterministic `stream_id` construction from keys (URL-encoded for safety)
 
 **Database schema required:**
 
@@ -465,6 +466,14 @@ CREATE TABLE snapshots (
   PRIMARY KEY (readmodel_table_name, stream_id)
 );
 ```
+
+**Important Notes:**
+
+- **Primary Key Consistency**: The `extractKeys` function must return the same set of keys for all events. The projection validates this at runtime and will throw an error if keys are inconsistent.
+- **Idempotency**: Events with `streamPosition <= lastProcessedPosition` are automatically skipped, ensuring idempotent processing.
+- **Race Condition Protection**: Uses `FOR UPDATE` row-level locking to prevent concurrent transaction conflicts.
+- **Snapshot Format**: Handles both string and parsed JSON snapshot formats (different database drivers return JSONB differently).
+- **Special Characters**: Keys with special characters (like `|` or `:`) are safely URL-encoded in the `stream_id` construction.
 
 #### `createSnapshotProjectionRegistry(eventTypes, config)` (Legacy)
 
@@ -482,6 +491,14 @@ const registry = createSnapshotProjectionRegistry(
   }
 );
 ```
+
+**Important Notes:**
+
+- **Primary Key Consistency**: The `extractKeys` function must return the same set of keys for all events. The projection validates this at runtime and will throw an error if keys are inconsistent.
+- **Idempotency**: Events with `streamPosition <= lastProcessedPosition` are automatically skipped, ensuring idempotent processing.
+- **Race Condition Protection**: Uses `FOR UPDATE` row-level locking to prevent concurrent transaction conflicts.
+- **Snapshot Format**: Handles both string and parsed JSON snapshot formats (different database drivers return JSONB differently).
+- **Transaction Safety**: All operations run within a transaction to ensure atomicity.
 
 ### Projection Runner
 

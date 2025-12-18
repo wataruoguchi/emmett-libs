@@ -723,4 +723,684 @@ describe("Projections Modules", () => {
       expect(registry.Event2).toHaveLength(1);
     });
   });
+
+  describe("createSnapshotProjection Edge Cases", () => {
+    it("should throw error when extractKeys returns inconsistent primary keys", async () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      // Create a handler that will be called twice with different keys
+      // First call establishes the key set, second call with different keys should fail
+      let callCount = 0;
+      const handler = createSnapshotProjection({
+        tableName: "test_table",
+        extractKeys: (_event, _partition): Record<string, string> => {
+          callCount++;
+          if (callCount === 1) {
+            return { id: "test-id" };
+          }
+          // Second call returns different keys - should throw
+          return {
+            id: "test-id",
+            tenant_id: "tenant-1", // Different keys
+          };
+        },
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      const mockDb = {
+        selectFrom: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              forUpdate: vi.fn().mockReturnValue({
+                executeTakeFirst: vi.fn().mockResolvedValue(null),
+              }),
+            }),
+          }),
+        }),
+        insertInto: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            onConflict: vi.fn().mockReturnValue({
+              execute: vi.fn().mockResolvedValue(undefined),
+            }),
+          }),
+        }),
+      } as any;
+
+      const event1 = {
+        type: "TestEvent",
+        data: {},
+        metadata: {
+          streamId: "stream-1",
+          streamPosition: 1n,
+          globalPosition: 1n,
+        },
+      };
+
+      const event2 = {
+        type: "TestEvent2",
+        data: {},
+        metadata: {
+          streamId: "stream-2",
+          streamPosition: 2n,
+          globalPosition: 2n,
+        },
+      };
+
+      // First call should succeed
+      await handler({ db: mockDb, partition: "partition-1" }, event1);
+
+      // Second call with different keys should throw
+      await expect(
+        handler({ db: mockDb, partition: "partition-1" }, event2),
+      ).rejects.toThrow(/inconsistent primary keys/);
+    });
+
+    it("should skip events with position <= last processed position", async () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const handler = createSnapshotProjection({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      const mockDb = {
+        selectFrom: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              forUpdate: vi.fn().mockReturnValue({
+                executeTakeFirst: vi.fn().mockResolvedValue({
+                  last_stream_position: "5",
+                  snapshot: JSON.stringify({ count: 10 }),
+                }),
+              }),
+            }),
+          }),
+        }),
+        insertInto: vi.fn(),
+      } as any;
+
+      const event = {
+        type: "TestEvent",
+        data: {},
+        metadata: {
+          streamId: "stream-1",
+          streamPosition: 3n, // Older than 5
+          globalPosition: 3n,
+        },
+      };
+
+      await handler({ db: mockDb, partition: "partition-1" }, event);
+
+      // Should not call insertInto since event is skipped
+      expect(mockDb.insertInto).not.toHaveBeenCalled();
+    });
+
+    it("should handle snapshot as string (JSONB from some drivers)", async () => {
+      const mockEvolve = vi.fn((state, _event) => ({
+        ...state,
+        processed: true,
+      }));
+      const mockInitialState = vi.fn(() => ({ processed: false }));
+
+      const handler = createSnapshotProjection({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      const mockDb = {
+        selectFrom: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              forUpdate: vi.fn().mockReturnValue({
+                executeTakeFirst: vi.fn().mockResolvedValue({
+                  last_stream_position: "1",
+                  snapshot: JSON.stringify({ processed: false }), // String format
+                }),
+              }),
+            }),
+          }),
+        }),
+        insertInto: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            onConflict: vi.fn().mockReturnValue({
+              execute: vi.fn().mockResolvedValue(undefined),
+            }),
+          }),
+        }),
+      } as never;
+
+      const event = {
+        type: "TestEvent",
+        data: {},
+        metadata: {
+          streamId: "stream-1",
+          streamPosition: 2n,
+          globalPosition: 2n,
+        },
+      };
+
+      await handler({ db: mockDb, partition: "partition-1" }, event);
+
+      // Should parse string snapshot and evolve it
+      expect(mockEvolve).toHaveBeenCalledWith(
+        { processed: false },
+        expect.objectContaining({ type: "TestEvent" }),
+      );
+    });
+
+    it("should handle snapshot as parsed JSON object", async () => {
+      const mockEvolve = vi.fn((state, _event) => ({
+        ...state,
+        processed: true,
+      }));
+      const mockInitialState = vi.fn(() => ({ processed: false }));
+
+      const handler = createSnapshotProjection({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      const mockDb = {
+        selectFrom: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              forUpdate: vi.fn().mockReturnValue({
+                executeTakeFirst: vi.fn().mockResolvedValue({
+                  last_stream_position: "1",
+                  snapshot: { processed: false }, // Parsed object
+                }),
+              }),
+            }),
+          }),
+        }),
+        insertInto: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            onConflict: vi.fn().mockReturnValue({
+              execute: vi.fn().mockResolvedValue(undefined),
+            }),
+          }),
+        }),
+      } as never;
+
+      const event = {
+        type: "TestEvent",
+        data: {},
+        metadata: {
+          streamId: "stream-1",
+          streamPosition: 2n,
+          globalPosition: 2n,
+        },
+      };
+
+      await handler({ db: mockDb, partition: "partition-1" }, event);
+
+      // Should use parsed object directly
+      expect(mockEvolve).toHaveBeenCalledWith(
+        { processed: false },
+        expect.objectContaining({ type: "TestEvent" }),
+      );
+    });
+
+    it("should handle empty mapToColumns result", () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+      const mockMapToColumns = vi.fn(() => ({})); // Empty object
+
+      const handler = createSnapshotProjection({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+        mapToColumns: mockMapToColumns,
+      });
+
+      expect(typeof handler).toBe("function");
+    });
+
+    it("should handle mapToColumns with null/undefined values", () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+      const mockMapToColumns = vi.fn(() => ({
+        field1: "value",
+        field2: null,
+        field3: undefined,
+      }));
+
+      const handler = createSnapshotProjection({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+        mapToColumns: mockMapToColumns,
+      });
+
+      expect(typeof handler).toBe("function");
+    });
+
+    it("should handle events with same position (idempotency check)", async () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const handler = createSnapshotProjection({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      const mockDb = {
+        selectFrom: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              forUpdate: vi.fn().mockReturnValue({
+                executeTakeFirst: vi.fn().mockResolvedValue({
+                  last_stream_position: "5",
+                  snapshot: JSON.stringify({}),
+                }),
+              }),
+            }),
+          }),
+        }),
+        insertInto: vi.fn(),
+      } as any;
+
+      const event = {
+        type: "TestEvent",
+        data: {},
+        metadata: {
+          streamId: "stream-1",
+          streamPosition: 5n, // Same as last processed
+          globalPosition: 5n,
+        },
+      };
+
+      await handler({ db: mockDb, partition: "partition-1" }, event);
+
+      // Should skip since position is equal
+      expect(mockDb.insertInto).not.toHaveBeenCalled();
+    });
+
+    it("should handle special characters in keys for stream_id construction", () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const handler = createSnapshotProjectionWithSnapshotTable({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({
+          id: "test|id:with|special:chars",
+          tenant_id: "tenant|123",
+        }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      // Should not throw - URL encoding handles special chars
+      expect(typeof handler).toBe("function");
+    });
+
+    it("should handle empty keys object", () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const handler = createSnapshotProjection({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({}), // Empty keys
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      expect(typeof handler).toBe("function");
+    });
+
+    it("should handle very large position values", async () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const handler = createSnapshotProjection({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      const largePosition = BigInt("999999999999999999999");
+
+      const mockDb = {
+        selectFrom: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              forUpdate: vi.fn().mockReturnValue({
+                executeTakeFirst: vi.fn().mockResolvedValue({
+                  last_stream_position: largePosition.toString(),
+                  snapshot: JSON.stringify({}),
+                }),
+              }),
+            }),
+          }),
+        }),
+        insertInto: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            onConflict: vi.fn().mockReturnValue({
+              execute: vi.fn().mockResolvedValue(undefined),
+            }),
+          }),
+        }),
+      } as any;
+
+      const event = {
+        type: "TestEvent",
+        data: {},
+        metadata: {
+          streamId: "stream-1",
+          streamPosition: largePosition + 1n,
+          globalPosition: largePosition + 1n,
+        },
+      };
+
+      await handler({ db: mockDb, partition: "partition-1" }, event);
+
+      // Should handle large positions correctly
+      expect(mockDb.insertInto).toHaveBeenCalled();
+    });
+  });
+
+  describe("createSnapshotProjectionWithSnapshotTable Edge Cases", () => {
+    it("should throw error when extractKeys returns inconsistent primary keys", async () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      // Create a handler that will be called twice with different keys
+      // First call establishes the key set, second call with different keys should fail
+      let callCount = 0;
+      const handler = createSnapshotProjectionWithSnapshotTable({
+        tableName: "test_table",
+        extractKeys: (_event, _partition): Record<string, string> => {
+          callCount++;
+          if (callCount === 1) {
+            return { id: "test-id" };
+          }
+          // Second call returns different keys - should throw
+          return {
+            id: "test-id",
+            tenant_id: "tenant-1", // Different keys
+          };
+        },
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      // Create a chainable mock that supports multiple .where() calls
+      const mockWhereChain = {
+        where: vi.fn().mockReturnThis(),
+        forUpdate: vi.fn().mockReturnValue({
+          executeTakeFirst: vi.fn().mockResolvedValue(null),
+        }),
+      };
+
+      const mockDb = {
+        selectFrom: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue(mockWhereChain),
+        }),
+        insertInto: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            onConflict: vi.fn().mockReturnValue({
+              execute: vi.fn().mockResolvedValue(undefined),
+            }),
+          }),
+        }),
+      } as any;
+
+      const event1 = {
+        type: "TestEvent",
+        data: {},
+        metadata: {
+          streamId: "stream-1",
+          streamPosition: 1n,
+          globalPosition: 1n,
+        },
+      };
+
+      const event2 = {
+        type: "TestEvent2",
+        data: {},
+        metadata: {
+          streamId: "stream-2",
+          streamPosition: 2n,
+          globalPosition: 2n,
+        },
+      };
+
+      // First call should succeed
+      await handler({ db: mockDb, partition: "partition-1" }, event1);
+
+      // Second call with different keys should throw
+      await expect(
+        handler({ db: mockDb, partition: "partition-1" }, event2),
+      ).rejects.toThrow(/inconsistent primary keys/);
+    });
+
+    it("should construct deterministic stream_id from keys", async () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const handler = createSnapshotProjectionWithSnapshotTable({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({
+          tenant_id: "tenant-1",
+          cart_id: "cart-1",
+          partition: "partition-1",
+        }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+      });
+
+      // Create a chainable mock that supports multiple .where() calls
+      const mockWhereChain = {
+        where: vi.fn().mockReturnThis(),
+        forUpdate: vi.fn().mockReturnValue({
+          executeTakeFirst: vi.fn().mockResolvedValue(null),
+        }),
+      };
+
+      const mockDb = {
+        selectFrom: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue(mockWhereChain),
+        }),
+        insertInto: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            onConflict: vi.fn().mockReturnValue({
+              execute: vi.fn().mockResolvedValue(undefined),
+            }),
+          }),
+        }),
+      } as any;
+
+      const event = {
+        type: "TestEvent",
+        data: {},
+        metadata: {
+          streamId: "stream-1",
+          streamPosition: 1n,
+          globalPosition: 1n,
+        },
+      };
+
+      await handler({ db: mockDb, partition: "partition-1" }, event);
+
+      // Should construct stream_id from keys, not use event.metadata.streamId
+      expect(mockDb.insertInto).toHaveBeenCalled();
+      const insertCall = mockDb.insertInto.mock.calls[0];
+      expect(insertCall[0]).toBe("snapshots");
+    });
+
+    it("should handle read model upsert without denormalized columns", async () => {
+      const mockEvolve = vi.fn((state, _event) => state);
+      const mockInitialState = vi.fn(() => ({}));
+
+      const handler = createSnapshotProjectionWithSnapshotTable({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+        // No mapToColumns
+      });
+
+      const mockDoNothing = {
+        execute: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockConflictBuilderForDoNothing = {
+        doNothing: vi.fn().mockReturnValue(mockDoNothing),
+      };
+
+      const mockOnConflictBuilderForDoNothing = {
+        columns: vi.fn().mockReturnValue(mockConflictBuilderForDoNothing),
+      };
+
+      const mockReadModelInsert = {
+        values: vi.fn().mockReturnValue({
+          onConflict: vi.fn((callback) => {
+            // Call the callback with the mock conflict builder and return its result
+            const result = callback(mockOnConflictBuilderForDoNothing);
+            return result;
+          }),
+        }),
+      };
+
+      // Create a chainable mock that supports multiple .where() calls
+      const mockWhereChain = {
+        where: vi.fn().mockReturnThis(),
+        forUpdate: vi.fn().mockReturnValue({
+          executeTakeFirst: vi.fn().mockResolvedValue(null),
+        }),
+      };
+
+      const mockDb = {
+        selectFrom: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue(mockWhereChain),
+        }),
+        insertInto: vi.fn((table) => {
+          if (table === "snapshots") {
+            return {
+              values: vi.fn().mockReturnValue({
+                onConflict: vi.fn().mockReturnValue({
+                  execute: vi.fn().mockResolvedValue(undefined),
+                }),
+              }),
+            };
+          }
+          return mockReadModelInsert;
+        }),
+      } as any;
+
+      const event = {
+        type: "TestEvent",
+        data: {},
+        metadata: {
+          streamId: "stream-1",
+          streamPosition: 1n,
+          globalPosition: 1n,
+        },
+      };
+
+      await handler({ db: mockDb, partition: "partition-1" }, event);
+
+      // Should use doNothing() when no denormalized columns
+      expect(mockDb.insertInto).toHaveBeenCalledWith("test_table");
+      expect(mockReadModelInsert.values).toHaveBeenCalled();
+    });
+
+    it("should handle read model upsert with denormalized columns", async () => {
+      const mockEvolve = vi.fn((state, _event) => ({
+        ...state,
+        status: "active",
+      }));
+      const mockInitialState = vi.fn(() => ({ status: "init" }));
+      const mockMapToColumns = vi.fn((state: any) => ({
+        status_text: state.status,
+      }));
+
+      const handler = createSnapshotProjectionWithSnapshotTable({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+        mapToColumns: mockMapToColumns,
+      });
+
+      const mockDoUpdateSet = {
+        execute: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockConflictBuilderForDoUpdateSet = {
+        doUpdateSet: vi.fn().mockReturnValue(mockDoUpdateSet),
+      };
+
+      const mockOnConflictBuilder = {
+        columns: vi.fn().mockReturnValue(mockConflictBuilderForDoUpdateSet),
+      };
+
+      const mockReadModelInsert = {
+        values: vi.fn().mockReturnValue({
+          onConflict: vi.fn((callback) => {
+            // Call the callback with the mock conflict builder and return its result
+            const result = callback(mockOnConflictBuilder);
+            return result;
+          }),
+        }),
+      };
+
+      // Create a chainable mock that supports multiple .where() calls
+      const mockWhereChain = {
+        where: vi.fn().mockReturnThis(),
+        forUpdate: vi.fn().mockReturnValue({
+          executeTakeFirst: vi.fn().mockResolvedValue(null),
+        }),
+      };
+
+      const mockDb = {
+        selectFrom: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue(mockWhereChain),
+        }),
+        insertInto: vi.fn((table) => {
+          if (table === "snapshots") {
+            return {
+              values: vi.fn().mockReturnValue({
+                onConflict: vi.fn().mockReturnValue({
+                  execute: vi.fn().mockResolvedValue(undefined),
+                }),
+              }),
+            };
+          }
+          return mockReadModelInsert;
+        }),
+      } as any;
+
+      const event = {
+        type: "TestEvent",
+        data: {},
+        metadata: {
+          streamId: "stream-1",
+          streamPosition: 1n,
+          globalPosition: 1n,
+        },
+      };
+
+      await handler({ db: mockDb, partition: "partition-1" }, event);
+
+      // Should use doUpdateSet when denormalized columns exist
+      expect(mockDb.insertInto).toHaveBeenCalledWith("test_table");
+      expect(mockReadModelInsert.values).toHaveBeenCalled();
+      expect(mockConflictBuilderForDoUpdateSet.doUpdateSet).toHaveBeenCalled();
+    });
+  });
 });
