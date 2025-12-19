@@ -131,7 +131,8 @@ function validateAndCachePrimaryKeys(
 /**
  * Checks if the event should be processed based on the last processed position.
  * Returns true if the event should be skipped (already processed or older).
- * Uses -1n as the default to indicate no previous position (process from beginning).
+ * Callers should pass -1n for lastProcessedPosition when there is no previous position
+ * so that events are processed from the beginning.
  */
 function shouldSkipEvent(
   eventPosition: bigint,
