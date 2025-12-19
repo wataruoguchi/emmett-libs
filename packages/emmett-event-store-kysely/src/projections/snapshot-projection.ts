@@ -334,8 +334,9 @@ export function createSnapshotProjection<
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .onConflict((oc: OnConflictBuilder<DatabaseExecutor, any>) => {
         const conflictBuilder = oc.columns(primaryKeys);
-        // Note: We could add a WHERE clause here to only update if excluded.last_stream_position > table.last_stream_position,
-        // but Kysely's API doesn't easily support this. The FOR UPDATE lock above provides the primary protection.
+        // Note: We could add a WHERE clause here (via doUpdateSet's `where` option) to only update
+        // if excluded.last_stream_position > table.last_stream_position, but the FOR UPDATE lock above
+        // already provides the primary protection, so we intentionally rely on that for concurrency control.
         return conflictBuilder.doUpdateSet(updateSet);
       })
       .execute();
