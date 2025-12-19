@@ -34,7 +34,7 @@ import { Kysely } from "kysely";
 
 A read model table expects to have the following columns:
 
-- stream_id (uuid)
+- stream_id (text)
 - last_stream_position (bigint)
 - last_global_position (bigint)
 - partition (text)
