@@ -76,8 +76,11 @@ export type SnapshotProjectionConfig<
  *
  * URL encoding is used to handle special characters (like `|` and `:`) in key names or values
  * that could otherwise cause collisions or parsing issues when used as delimiters.
+ *
+ * @internal
+ * Exported for testing purposes only.
  */
-function constructStreamId(keys: Record<string, string>): string {
+export function constructStreamId(keys: Record<string, string>): string {
   const sortedEntries = Object.entries(keys).sort(([a], [b]) =>
     a.localeCompare(b),
   );
@@ -138,10 +141,14 @@ function shouldSkipEvent(
 /**
  * Loads the current state from a snapshot, handling both string and parsed JSON formats.
  * Falls back to initial state if no snapshot exists.
+ *
+ * @internal
+ * Exported for testing purposes only.
  */
-function loadStateFromSnapshot<TState>(
+export function loadStateFromSnapshot<TState>(
   snapshot: unknown,
   initialState: () => TState,
+  tableName?: string,
 ): TState {
   if (!snapshot) {
     return initialState();
@@ -149,7 +156,17 @@ function loadStateFromSnapshot<TState>(
 
   // Some database drivers return JSONB as strings, others as parsed objects
   if (typeof snapshot === "string") {
-    return JSON.parse(snapshot) as TState;
+    try {
+      return JSON.parse(snapshot) as TState;
+    } catch (error) {
+      const tableContext = tableName ? ` for table "${tableName}"` : "";
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Failed to parse snapshot${tableContext}: ${errorMessage}. ` +
+          `Snapshot value: ${snapshot.substring(0, 200)}${snapshot.length > 200 ? "..." : ""}`,
+      );
+    }
   }
 
   return snapshot as unknown as TState;
@@ -266,6 +283,7 @@ export function createSnapshotProjection<
     const currentState: TState = loadStateFromSnapshot(
       existing?.snapshot,
       initialState,
+      tableName,
     );
 
     // Apply the event to get new state
@@ -424,6 +442,7 @@ export function createSnapshotProjectionWithSnapshotTable<
     const currentState: TState = loadStateFromSnapshot(
       existing?.snapshot,
       initialState,
+      tableName,
     );
 
     // Apply the event to get new state

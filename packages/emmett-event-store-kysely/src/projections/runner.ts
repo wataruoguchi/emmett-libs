@@ -115,33 +115,43 @@ export function createProjectionRunner({
     const partition = opts?.partition ?? "default_partition";
     const batchSize = BigInt(opts?.batchSize ?? 500);
 
-    // Wrap the entire operation in a transaction to ensure atomicity
-    return await db.transaction().execute(async (trx: Kysely<any> | any) => {
-      const checkpoint = await getOrCreateCheckpoint(
-        trx,
-        subscriptionId,
+    // Read checkpoint outside transaction to avoid holding locks during event reading
+    const checkpoint = await getOrCreateCheckpoint(
+      db,
+      subscriptionId,
+      partition,
+    );
+
+    // Read events outside transaction - this is just a read operation
+    const { events, currentStreamVersion } =
+      await readStream<EventWithMetadata>(streamId, {
+        from: checkpoint.lastProcessedPosition + 1n,
+        to: checkpoint.lastProcessedPosition + batchSize,
         partition,
-      );
+      });
 
-      const { events, currentStreamVersion } =
-        await readStream<EventWithMetadata>(streamId, {
-          from: checkpoint.lastProcessedPosition + 1n,
-          to: checkpoint.lastProcessedPosition + batchSize,
-          partition,
-        });
+    let processed = 0;
 
-      for (const ev of events) {
-        if (!ev) continue;
+    // Process each event in its own transaction
+    // This keeps transactions short and reduces lock contention
+    for (const ev of events) {
+      if (!ev) continue;
+
+      // Each event gets its own transaction
+      // This ensures atomicity per event while keeping transactions short
+      await db.transaction().execute(async (trx: Kysely<any> | any) => {
         const handlers = registry[ev.type] ?? [];
         if (handlers.length === 0) {
+          // No handlers, just update checkpoint
           await updateCheckpoint(
             trx,
             subscriptionId,
             partition,
             ev.metadata.streamPosition,
           );
-          continue;
+          return;
         }
+
         const projectionEvent: ProjectionEvent<{
           type: string;
           data: unknown;
@@ -154,19 +164,26 @@ export function createProjectionRunner({
             globalPosition: ev.metadata.globalPosition,
           },
         };
+
+        // All handlers for this event run in the same transaction
+        // This ensures they see each other's changes and maintain consistency
         for (const handler of handlers) {
           await handler({ db: trx, partition }, projectionEvent);
         }
+
+        // Update checkpoint after all handlers succeed
         await updateCheckpoint(
           trx,
           subscriptionId,
           partition,
           projectionEvent.metadata.streamPosition,
         );
-      }
+      });
 
-      return { processed: events.length, currentStreamVersion };
-    });
+      processed++;
+    }
+
+    return { processed, currentStreamVersion };
   }
 
   return { projectEvents };
