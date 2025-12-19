@@ -40,10 +40,11 @@ export function createProjectionRunner({
   };
 
   async function getOrCreateCheckpoint(
+    executor: Kysely<any> | any,
     subscriptionId: string,
     partition: string,
   ): Promise<SubscriptionCheckpoint> {
-    const existing = await db
+    const existing = await executor
       .selectFrom("subscriptions")
       .select([
         "subscription_id as subscriptionId",
@@ -68,7 +69,7 @@ export function createProjectionRunner({
       };
     }
 
-    await db
+    await executor
       .insertInto("subscriptions")
       .values({
         subscription_id: subscriptionId,
@@ -93,11 +94,12 @@ export function createProjectionRunner({
   }
 
   async function updateCheckpoint(
+    executor: Kysely<any> | any,
     subscriptionId: string,
     partition: string,
     lastProcessedPosition: bigint,
   ) {
-    await db
+    await executor
       .updateTable("subscriptions")
       .set({ last_processed_position: lastProcessedPosition })
       .where("subscription_id", "=", subscriptionId)
@@ -113,8 +115,14 @@ export function createProjectionRunner({
     const partition = opts?.partition ?? "default_partition";
     const batchSize = BigInt(opts?.batchSize ?? 500);
 
-    const checkpoint = await getOrCreateCheckpoint(subscriptionId, partition);
+    // Read checkpoint outside transaction to avoid holding locks during event reading
+    const checkpoint = await getOrCreateCheckpoint(
+      db,
+      subscriptionId,
+      partition,
+    );
 
+    // Read events outside transaction - this is just a read operation
     const { events, currentStreamVersion } =
       await readStream<EventWithMetadata>(streamId, {
         from: checkpoint.lastProcessedPosition + 1n,
@@ -122,19 +130,32 @@ export function createProjectionRunner({
         partition,
       });
 
+    let processed = 0;
+
+    // Process each event in its own transaction
+    // This keeps transactions short and reduces lock contention
     for (const ev of events) {
       if (!ev) continue;
-      const handlers = registry[ev.type] ?? [];
-      if (handlers.length === 0) {
-        await updateCheckpoint(
-          subscriptionId,
-          partition,
-          ev.metadata.streamPosition,
-        );
-        continue;
-      }
-      const projectionEvent: ProjectionEvent<{ type: string; data: unknown }> =
-        {
+
+      // Each event gets its own transaction
+      // This ensures atomicity per event while keeping transactions short
+      await db.transaction().execute(async (trx: Kysely<any> | any) => {
+        const handlers = registry[ev.type] ?? [];
+        if (handlers.length === 0) {
+          // No handlers, just update checkpoint
+          await updateCheckpoint(
+            trx,
+            subscriptionId,
+            partition,
+            ev.metadata.streamPosition,
+          );
+          return;
+        }
+
+        const projectionEvent: ProjectionEvent<{
+          type: string;
+          data: unknown;
+        }> = {
           type: ev.type,
           data: ev.data,
           metadata: {
@@ -143,17 +164,26 @@ export function createProjectionRunner({
             globalPosition: ev.metadata.globalPosition,
           },
         };
-      for (const handler of handlers) {
-        await handler({ db, partition }, projectionEvent);
-      }
-      await updateCheckpoint(
-        subscriptionId,
-        partition,
-        projectionEvent.metadata.streamPosition,
-      );
+
+        // All handlers for this event run in the same transaction
+        // This ensures they see each other's changes and maintain consistency
+        for (const handler of handlers) {
+          await handler({ db: trx, partition }, projectionEvent);
+        }
+
+        // Update checkpoint after all handlers succeed
+        await updateCheckpoint(
+          trx,
+          subscriptionId,
+          partition,
+          projectionEvent.metadata.streamPosition,
+        );
+      });
+
+      processed++;
     }
 
-    return { processed: events.length, currentStreamVersion };
+    return { processed, currentStreamVersion };
   }
 
   return { projectEvents };
