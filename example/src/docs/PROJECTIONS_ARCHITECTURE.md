@@ -33,7 +33,7 @@ export function createEvolve() {
 }
 
 // cart.read-model.ts (Read Model)
-import { createSnapshotProjectionRegistry } from "@wataruoguchi/emmett-event-store-kysely/projections";
+import { createSnapshotProjectionRegistry } from "@wataruoguchi/emmett-event-store-kysely";
 
 export function cartsSnapshotProjection() {
   const domainEvolve = createEvolve(); // Reuse!
@@ -133,7 +133,7 @@ The **projection runner** executes projections **on-demand** and **synchronously
 import {
   createProjectionRunner,
   createProjectionRegistry,
-} from "@wataruoguchi/emmett-event-store-kysely/projections";
+} from "@wataruoguchi/emmett-event-store-kysely";
 import { getKyselyEventStore } from "@wataruoguchi/emmett-event-store-kysely";
 
 // In test setup

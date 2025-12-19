@@ -14,6 +14,8 @@ export type { ProjectEvents } from "./projections/runner.js";
 export {
   createSnapshotProjection,
   createSnapshotProjectionRegistry,
+  createSnapshotProjectionWithSnapshotTable,
+  createSnapshotProjectionRegistryWithSnapshotTable,
 } from "./projections/snapshot-projection.js";
 export type { SnapshotProjectionConfig } from "./projections/snapshot-projection.js";
 export { createProjectionRegistry } from "./types.js";
