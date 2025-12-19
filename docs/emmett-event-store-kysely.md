@@ -471,7 +471,7 @@ CREATE TABLE snapshots (
 
 - **Primary Key Consistency**: The `extractKeys` function must return the same set of keys for all events. The projection validates this at runtime and will throw an error if keys are inconsistent.
 - **Idempotency**: Events with `streamPosition <= lastProcessedPosition` are automatically skipped, ensuring idempotent processing.
-- **Race Condition Protection**: Uses `FOR UPDATE` row-level locking to prevent concurrent transaction conflicts.
+- **Race Condition Protection**: Runs each projection update inside a transaction opened by the projection runner and uses `FOR UPDATE` row-level locking within that transaction to prevent concurrent conflicts.
 - **Snapshot Format**: Handles both string and parsed JSON snapshot formats (different database drivers return JSONB differently).
 - **Special Characters**: Keys with special characters (like `|` or `:`) are safely URL-encoded in the `stream_id` construction.
 
