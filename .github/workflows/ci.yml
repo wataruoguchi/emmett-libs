@@ -58,9 +58,6 @@ jobs:
   release:
     name: Release - ${{ matrix.package }}
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     needs: quality
     if: github.ref == 'refs/heads/main'
     strategy:
@@ -70,6 +67,7 @@ jobs:
           - emmett-crypto-shredding
           - emmett-crypto-shredding-kysely
     permissions:
+      id-token: write
       contents: write
       issues: write
       pull-requests: write
