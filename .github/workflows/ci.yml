@@ -9,10 +9,6 @@ on:
     paths-ignore: ['example/**', '.husky/**', '.github/**', '.vscode/**']
   workflow_dispatch: # Allow manual triggering
 
-permissions:
-  id-token: write
-  contents: read
-
 jobs:
   quality:
     name: Quality Checks - ${{ matrix.package }}
@@ -62,6 +58,9 @@ jobs:
   release:
     name: Release - ${{ matrix.package }}
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     needs: quality
     if: github.ref == 'refs/heads/main'
     strategy:
