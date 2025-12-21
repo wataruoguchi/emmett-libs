@@ -9,6 +9,12 @@ on:
     paths-ignore: ['example/**', '.husky/**', '.github/**', '.vscode/**']
   workflow_dispatch: # Allow manual triggering
 
+permissions:
+  id-token: write
+  contents: write
+  issues: write
+  pull-requests: write
+
 jobs:
   quality:
     name: Quality Checks - ${{ matrix.package }}
@@ -66,11 +72,6 @@ jobs:
           - emmett-event-store-kysely
           - emmett-crypto-shredding
           - emmett-crypto-shredding-kysely
-    permissions:
-      id-token: write
-      contents: write
-      issues: write
-      pull-requests: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
