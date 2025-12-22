@@ -559,6 +559,65 @@ describe("Projections Modules", () => {
       expect(registry.Event1).toHaveLength(1);
       expect(registry.Event2).toHaveLength(1);
     });
+
+    it("should call mapToColumns exactly once on update event (not create)", async () => {
+      const existingState = { count: 5, status: "active" };
+      const newState = { count: 6, status: "active" };
+      const mockEvolve = vi.fn((_state, _event) => newState);
+      const mockInitialState = vi.fn(() => ({ count: 0, status: "init" }));
+      const mockMapToColumns = vi.fn((state: any) => ({
+        count_value: state.count,
+        status_text: state.status,
+      }));
+
+      const handler = createSnapshotProjection({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+        mapToColumns: mockMapToColumns,
+      });
+
+      // Mock database that returns an existing row (update scenario, not create)
+      const mockDb = {
+        selectFrom: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              forUpdate: vi.fn().mockReturnValue({
+                executeTakeFirst: vi.fn().mockResolvedValue({
+                  last_stream_position: "1",
+                  snapshot: JSON.stringify(existingState),
+                }),
+              }),
+            }),
+          }),
+        }),
+        insertInto: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            onConflict: vi.fn().mockReturnValue({
+              execute: vi.fn().mockResolvedValue(undefined),
+            }),
+          }),
+        }),
+      } as any;
+
+      const event = {
+        type: "TestEvent",
+        data: {},
+        metadata: {
+          streamId: "stream-1",
+          streamPosition: 2n, // Newer than existing position 1
+          globalPosition: 2n,
+        },
+      };
+
+      await handler({ db: mockDb, partition: "partition-1" }, event);
+
+      // Verify mapToColumns was called exactly once with the new state
+      expect(mockMapToColumns).toHaveBeenCalledTimes(1);
+      expect(mockMapToColumns).toHaveBeenCalledWith(newState);
+      expect(mockEvolve).toHaveBeenCalledWith(existingState, event);
+    });
   });
 
   describe("createSnapshotProjectionWithSnapshotTable", () => {
@@ -929,6 +988,101 @@ describe("Projections Modules", () => {
       expect(Object.keys(registry)).toEqual(["Event1", "Event2"]);
       expect(registry.Event1).toHaveLength(1);
       expect(registry.Event2).toHaveLength(1);
+    });
+
+    it("should call mapToColumns exactly once on update event (not create)", async () => {
+      const existingState = { count: 5, status: "active" };
+      const newState = { count: 6, status: "active" };
+      const mockEvolve = vi.fn((_state, _event) => newState);
+      const mockInitialState = vi.fn(() => ({ count: 0, status: "init" }));
+      const mockMapToColumns = vi.fn((state: any) => ({
+        count_value: state.count,
+        status_text: state.status,
+      }));
+
+      const handler = createSnapshotProjectionWithSnapshotTable({
+        tableName: "test_table",
+        extractKeys: (_event, _partition) => ({ id: "test-id" }),
+        evolve: mockEvolve,
+        initialState: mockInitialState,
+        mapToColumns: mockMapToColumns,
+      });
+
+      // Create a chainable mock that supports multiple .where() calls
+      const mockWhereChain = {
+        where: vi.fn().mockReturnThis(),
+        forUpdate: vi.fn().mockReturnValue({
+          executeTakeFirst: vi.fn().mockResolvedValue({
+            last_stream_position: "1",
+            snapshot: JSON.stringify(existingState),
+          }),
+        }),
+      };
+
+      const mockDoUpdateSet = {
+        execute: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockConflictBuilderForDoUpdateSet = {
+        doUpdateSet: vi.fn().mockReturnValue(mockDoUpdateSet),
+      };
+
+      const mockOnConflictBuilder = {
+        columns: vi.fn().mockReturnValue(mockConflictBuilderForDoUpdateSet),
+      };
+
+      const mockReadModelInsert = {
+        values: vi.fn().mockReturnValue({
+          onConflict: vi.fn((callback) => {
+            const result = callback(mockOnConflictBuilder);
+            return result;
+          }),
+        }),
+      };
+
+      // Mock database that returns an existing row (update scenario, not create)
+      const mockDb = {
+        selectFrom: vi.fn((table) => {
+          if (table === "snapshots") {
+            return {
+              select: vi.fn().mockReturnValue(mockWhereChain),
+            };
+          }
+          return {
+            select: vi.fn().mockReturnValue(mockWhereChain),
+          };
+        }),
+        insertInto: vi.fn((table) => {
+          if (table === "snapshots") {
+            return {
+              values: vi.fn().mockReturnValue({
+                onConflict: vi.fn().mockReturnValue({
+                  execute: vi.fn().mockResolvedValue(undefined),
+                }),
+              }),
+            };
+          }
+          // For read model table
+          return mockReadModelInsert;
+        }),
+      } as any;
+
+      const event = {
+        type: "TestEvent",
+        data: {},
+        metadata: {
+          streamId: "stream-1",
+          streamPosition: 2n, // Newer than existing position 1
+          globalPosition: 2n,
+        },
+      };
+
+      await handler({ db: mockDb, partition: "partition-1" }, event);
+
+      // Verify mapToColumns was called exactly once with the new state
+      expect(mockMapToColumns).toHaveBeenCalledTimes(1);
+      expect(mockMapToColumns).toHaveBeenCalledWith(newState);
+      expect(mockEvolve).toHaveBeenCalledWith(existingState, event);
     });
   });
 
