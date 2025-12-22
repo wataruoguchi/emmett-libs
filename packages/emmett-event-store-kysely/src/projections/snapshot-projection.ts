@@ -176,20 +176,18 @@ export function loadStateFromSnapshot<TState>(
 }
 
 /**
- * Builds the update set for denormalized columns from mapToColumns.
- * Returns an empty object if mapToColumns is not provided.
+ * Builds the update set for denormalized columns.
+ * Returns an empty object if columns is not provided or empty.
  */
-function buildDenormalizedUpdateSet<TState>(
-  newState: TState,
-  mapToColumns?: (state: TState) => Record<string, unknown>,
+function buildDenormalizedUpdateSet(
+  columns?: Record<string, unknown>,
 ): Record<string, (eb: ExpressionBuilder<DatabaseExecutor, any>) => unknown> {
   const updateSet: Record<
     string,
     (eb: ExpressionBuilder<DatabaseExecutor, any>) => unknown
   > = {};
 
-  if (mapToColumns) {
-    const columns = mapToColumns(newState);
+  if (columns) {
     for (const columnName of Object.keys(columns)) {
       updateSet[columnName] = (eb) => eb.ref(`excluded.${columnName}`);
     }
@@ -292,6 +290,11 @@ export function createSnapshotProjection<
     // Apply the event to get new state
     const newState = evolve(currentState, event);
 
+    // Call mapToColumns once after evolve (only if provided)
+    const denormalizedColumns = mapToColumns
+      ? mapToColumns(newState)
+      : undefined;
+
     // Prepare the row data with snapshot
     const rowData: Record<string, unknown> = {
       ...keys,
@@ -301,10 +304,9 @@ export function createSnapshotProjection<
       last_global_position: event.metadata.globalPosition.toString(),
     };
 
-    // If mapToColumns is provided, add the denormalized columns
-    if (mapToColumns) {
-      const columns = mapToColumns(newState);
-      Object.assign(rowData, columns);
+    // If denormalized columns exist, add them to row data
+    if (denormalizedColumns) {
+      Object.assign(rowData, denormalizedColumns);
     }
 
     // Upsert the snapshot
@@ -322,10 +324,8 @@ export function createSnapshotProjection<
     };
 
     // Add denormalized columns to update set if provided
-    const denormalizedUpdateSet = buildDenormalizedUpdateSet(
-      newState,
-      mapToColumns,
-    );
+    const denormalizedUpdateSet =
+      buildDenormalizedUpdateSet(denormalizedColumns);
     Object.assign(updateSet, denormalizedUpdateSet);
 
     await insertQuery
@@ -452,6 +452,11 @@ export function createSnapshotProjectionWithSnapshotTable<
     // Apply the event to get new state
     const newState = evolve(currentState, event);
 
+    // Call mapToColumns once after evolve (only if provided)
+    const denormalizedColumns = mapToColumns
+      ? mapToColumns(newState)
+      : undefined;
+
     // Upsert the snapshot in the snapshots table
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db as any)
@@ -485,9 +490,8 @@ export function createSnapshotProjectionWithSnapshotTable<
     // Upsert the read model table with keys and denormalized columns only
     const readModelData: Record<string, unknown> = { ...keys };
 
-    if (mapToColumns) {
-      const columns = mapToColumns(newState);
-      Object.assign(readModelData, columns);
+    if (denormalizedColumns) {
+      Object.assign(readModelData, denormalizedColumns);
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -496,10 +500,7 @@ export function createSnapshotProjectionWithSnapshotTable<
       .values(readModelData);
 
     // Build the update set for conflict resolution (only for denormalized columns)
-    const readModelUpdateSet = buildDenormalizedUpdateSet(
-      newState,
-      mapToColumns,
-    );
+    const readModelUpdateSet = buildDenormalizedUpdateSet(denormalizedColumns);
 
     // Only update if there are denormalized columns, otherwise just insert (no-op on conflict)
     if (Object.keys(readModelUpdateSet).length > 0) {
