@@ -84,6 +84,10 @@ export function createKyselyEventStoreConsumer({
         return;
       }
 
+      // Track if all handlers succeeded in this batch
+      let batchSucceeded = true;
+      let lastSuccessfulPosition = lastProcessedPosition;
+
       // Process each event
       for (const row of events) {
         const event: ReadEvent<Event, ReadEventMetadataWithGlobalPosition> = {
@@ -99,6 +103,8 @@ export function createKyselyEventStoreConsumer({
           },
         };
 
+        let eventSucceeded = true;
+
         // Call type-specific handlers
         const typeHandlers = eventHandlers.get(row.message_type) || [];
         for (const handler of typeHandlers) {
@@ -106,35 +112,78 @@ export function createKyselyEventStoreConsumer({
             await handler(event);
           } catch (error) {
             logger.error(
-              { error, event },
-              `Error processing event ${row.message_type}`,
+              {
+                error,
+                event,
+                globalPosition: row.global_position,
+                consumerName,
+              },
+              `Error processing event ${row.message_type} at position ${row.global_position}. Consumer will retry this event on next poll.`,
             );
+            eventSucceeded = false;
+            batchSucceeded = false;
+            break; // Stop processing this event's handlers
           }
         }
 
-        // Call all-event handlers
-        for (const handler of allEventHandlers) {
-          try {
-            await handler(event);
-          } catch (error) {
-            logger.error(
-              { error, event },
-              "Error processing event in all-event handler",
-            );
+        // Only call all-event handlers if type-specific handlers succeeded
+        if (eventSucceeded) {
+          for (const handler of allEventHandlers) {
+            try {
+              await handler(event);
+            } catch (error) {
+              logger.error(
+                {
+                  error,
+                  event,
+                  globalPosition: row.global_position,
+                  consumerName,
+                },
+                `Error processing event in all-event handler at position ${row.global_position}. Consumer will retry this event on next poll.`,
+              );
+              eventSucceeded = false;
+              batchSucceeded = false;
+              break; // Stop processing this event's handlers
+            }
           }
         }
 
-        // Update last processed position
+        // If this event failed, stop processing the batch
+        if (!eventSucceeded) {
+          (logger.warn ?? logger.error)(
+            {
+              failedPosition: row.global_position,
+              lastSuccessfulPosition,
+              consumerName,
+            },
+            `Stopping batch processing due to handler failure. Will retry from position ${lastSuccessfulPosition + 1n}`,
+          );
+          break;
+        }
+
+        // Update last successful position only if all handlers succeeded for this event
         const globalPos = row.global_position;
         if (globalPos !== null) {
-          lastProcessedPosition = BigInt(String(globalPos));
+          lastSuccessfulPosition = BigInt(String(globalPos));
         }
       }
 
-      // Update subscription tracking
-      await updateSubscriptionPosition();
+      // Only update the position if entire batch succeeded
+      if (batchSucceeded) {
+        lastProcessedPosition = lastSuccessfulPosition;
+        await updateSubscriptionPosition();
+      } else {
+        // Keep the old position - will retry failed event on next poll
+        logger.info(
+          {
+            currentPosition: lastProcessedPosition,
+            consumerName,
+          },
+          `Batch processing incomplete. Position unchanged at ${lastProcessedPosition}. Will retry on next poll.`,
+        );
+      }
     } catch (error) {
-      logger.error({ error }, "Error processing events");
+      logger.error({ error, consumerName }, "Error processing events");
     }
   };
 
