@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@event-driven-io/emmett": "^0.38.6",
-    "@hono/node-server": "^1.19.4",
+    "@hono/node-server": "^2.0.10",
     "@wataruoguchi/emmett-crypto-shredding": "file:../packages/emmett-crypto-shredding",
     "@wataruoguchi/emmett-crypto-shredding-kysely": "file:../packages/emmett-crypto-shredding-kysely",
     "@wataruoguchi/emmett-event-store-kysely": "file:../packages/emmett-event-store-kysely",
